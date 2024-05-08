@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>Hi Time Live</title>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+  <meta name="author" content="Graham Steffaniak">
+  <meta name="msapplication-TileColor" content="#7d0e9e">
+  <meta name="theme-color" content="#7d0e9e">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" />
+  {{ template "baseStyle" }}
+</head>
+
+<body>
+  {{ template "websocket" . }}
+  {{ template "modal" . }}
+  {{ template "customScripts" . }}
+  <div id="videos" class="vid-container hidden">
+
+    <video id="secondaryVideo" autoplay muted></video>
+  </div>
+  <div class="controls hidden">
+    <div>
+      <button id="switchButton" class="settings" onclick="switchMedia()">Switch
+        Camera</button>
+      <button id="muteButton" class="settings" onclick="toggleMute()">Unmuted</button>
+      <button id="vidButton" class="settings" onclick="toggleVid()">Video Enabled</button>
+    </div>
+    <div class="container">
+      <!-- code here -->
+      <nav class="menu">
+        <a href="#" class="menu-item">
+          <span class="material-icons">sports_esports</span>
+          <span class="menu-item-label">Games</span>
+        </a>
+        <a href="#" class="menu-item">
+          <span class="material-icons">camera_alt</span>
+          <span class="menu-item-label">Images</span>
+        </a>
+        <a href="#" class="menu-item">
+          <span class="material-icons">movie</span>
+          <span class="menu-item-label">Movies</span>
+        </a>
+        <a href="#" class="menu-item">
+          <span class="material-icons">store_mall_directory</span>
+          <span class="menu-item-label">Store</span>
+        </a>
+      </nav>
+      <!-- end of code -->
+    </div>
+  </div>
+</body>
+
+</html>
