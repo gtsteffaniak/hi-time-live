@@ -3,6 +3,7 @@ package routes
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/labstack/echo/v4"
@@ -80,23 +81,41 @@ func wsHandler(c echo.Context) error {
 				fmt.Println(err)
 				return
 			}
-
-			jsonData, err := json.Marshal(&room.users)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-
 			connLock.Lock()
 			connections[ws] = connDetails
-			for conn := range connections {
-				err := websocket.Message.Send(conn, fmt.Sprintf("%v users: %s", len(room.users), jsonData))
-				if err != nil {
-					c.Logger().Error(err)
-				}
+			log.Println("new user added : ", userId)
+			// notify all websockets on new user connections
+			err = notifyNewUser(room.users)
+			if err != nil {
+				c.Logger().Error(err)
 			}
 			connLock.Unlock()
 		}
 	}).ServeHTTP(c.Response(), c.Request())
 	return nil
+}
+
+func notifyNewUser(users []user) error {
+	for ws, conn := range connections {
+		u := withoutCurrentUser(conn.user, users)
+		jsonData, err := json.Marshal(u)
+		if err != nil {
+			return fmt.Errorf("new error %s", err)
+		}
+		err = websocket.Message.Send(ws, fmt.Sprintf("%v other users: %s", len(u), jsonData))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func withoutCurrentUser(id string, users []user) []user {
+	var filteredUsers []user
+	for _, u := range users {
+		if u.Id != id {
+			filteredUsers = append(filteredUsers, u)
+		}
+	}
+	return filteredUsers
 }
