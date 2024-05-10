@@ -8,5 +8,5 @@ import (
 func main() {
 	e := echo.New()
 	routes.SetupRoutes(e)
-	e.Logger.Fatal(e.Start(":9012"))
+	e.Logger.Fatal(e.Start("0.0.0.0:9012"))
 }

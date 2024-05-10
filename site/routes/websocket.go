@@ -6,108 +6,182 @@ import (
 	"log"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/net/websocket"
 )
 
 type connection struct {
-	room string
-	user string
+	connId string
+	room   string
+	userId string
 }
 
 var connections = make(map[*websocket.Conn]connection)
 var connLock sync.Mutex
 
 func removeConnection(ws *websocket.Conn) {
+	fmt.Println("disconnecting")
 	defer func() {
 		ws.Close()
 		connLock.Lock()
 		defer connLock.Unlock()
-
 		// Notify all other connections in the same room that the user was removed
 		roomCode := connections[ws].room
-		userId := connections[ws].user
+		userId := connections[ws].userId
 		for conn, details := range connections {
 			if conn == ws || details.room != roomCode {
 				continue
 			}
 			room := rooms[roomCode]
 			room.removeUserFromRoom(userId)
-			_ = websocket.Message.Send(conn, fmt.Sprintf("User %s removed", userId))
+			message := map[string]any{
+				"eventType": "removedUser",
+				"userId":    userId,
+			}
+			fmt.Println("disconnected ", userId)
+			jsonData, _ := json.Marshal(message)
+			_ = websocket.Message.Send(conn, string(jsonData))
 		}
-
 		delete(connections, ws)
 	}()
-
-	_ = websocket.Message.Send(ws, "Disconnecting")
 }
 
 func wsHandler(c echo.Context) error {
 	websocket.Handler(func(ws *websocket.Conn) {
-		var connDetails connection
-		defer func() {
-			removeConnection(ws)
+		connId := uuid.New().String()
 
+		defer func() {
+			fmt.Println("closing")
+			removeConnection(ws)
 		}()
 
-		connLock.Lock()
-		connections[ws] = connDetails
-		connLock.Unlock()
-
 		for {
-			// Read
 			msg := ""
-			_ = websocket.Message.Receive(ws, &msg)
-
-			var data map[string]string
-			err := json.Unmarshal([]byte(msg), &data)
+			err := websocket.Message.Receive(ws, &msg)
 			if err != nil {
+				fmt.Println("error opening ws ")
 				fmt.Println(err)
 				return
 			}
-
-			userId := data["user"]
-			roomCode := data["code"]
-			connDetails.room = roomCode
-			connDetails.user = userId
-
-			newUser := user{
-				Id:    userId,
-				Offer: data["offer"],
-			}
-
-			room, err := attemptJoin(roomCode, newUser)
+			var message map[string]string
+			err = json.Unmarshal([]byte(msg), &message)
 			if err != nil {
+				fmt.Println("error for ", connId)
 				fmt.Println(err)
-				return
+				continue
 			}
+			fmt.Println("new message incoming")
 			connLock.Lock()
-			connections[ws] = connDetails
-			log.Println("new user added : ", userId)
-			// notify all websockets on new user connections
-			err = notifyNewUser(room.users)
+			connections[ws] = connection{
+				connId: connId,
+				userId: message["userId"],
+				room:   message["code"],
+			}
+			connLock.Unlock()
+			fmt.Println(message["userId"] + " " + connId)
+			switch eventType := message["eventType"]; eventType {
+			case "offer":
+				doNewUserStuff(message)
+			case "answer":
+				notifyNewAnswer(message)
+			case "candidates":
+				notifyCandidates(message)
+			default:
+				fmt.Println("defaulting")
+			}
+			fmt.Println("new message processing complete")
 			if err != nil {
 				c.Logger().Error(err)
 			}
-			connLock.Unlock()
 		}
 	}).ServeHTTP(c.Response(), c.Request())
 	return nil
 }
 
-func notifyNewUser(users []user) error {
+func notifyNewOffer(user user) error {
+	connLock.Lock()
+	defer connLock.Unlock()
 	for ws, conn := range connections {
-		u := withoutCurrentUser(conn.user, users)
-		jsonData, err := json.Marshal(u)
+		if conn.userId == user.Id {
+			return nil
+		}
+		message := map[string]string{
+			"eventType":  "newUser",
+			"userId":     user.Id,
+			"offer":      user.Offer,
+			"candidates": "",
+		}
+		jsonData, err := json.Marshal(message)
 		if err != nil {
 			return fmt.Errorf("new error %s", err)
 		}
-		err = websocket.Message.Send(ws, fmt.Sprintf("%v other users: %s", len(u), jsonData))
+		err = websocket.Message.Send(ws, string(jsonData))
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func notifyNewAnswer(message map[string]string) error {
+	connLock.Lock()
+	defer connLock.Unlock()
+	var finalErr error // Define a variable to store the final error
+	for ws, conn := range connections {
+		if conn.userId != message["forUser"] {
+			continue
+		}
+		message := map[string]string{
+			"eventType":  "answer",
+			"userId":     conn.userId,
+			"answer":     message["answer"],
+			"candidates": "",
+		}
+		jsonData, err := json.Marshal(message)
+		if err != nil {
+			return fmt.Errorf("new error %s", err)
+		}
+		finalErr = websocket.Message.Send(ws, string(jsonData))
+	}
+	return finalErr
+}
+func notifyCandidates(message map[string]string) error {
+	connLock.Lock()
+	defer connLock.Unlock()
+	var finalErr error // Define a variable to store the final error
+	for ws, conn := range connections {
+		if conn.userId == message["userId"] {
+			continue
+		}
+		message := map[string]string{
+			"eventType":  "candidates",
+			"userId":     message["userId"],
+			"candidates": message["candidates"],
+		}
+		jsonData, err := json.Marshal(message)
+		if err != nil {
+			return fmt.Errorf("new error %s", err)
+		}
+		finalErr = websocket.Message.Send(ws, string(jsonData))
+	}
+	return finalErr
+}
+
+func doNewUserStuff(message map[string]string) error {
+	newUser := user{
+		Id:    message["userId"],
+		Offer: message["offer"],
+	}
+	_, err := attemptJoin(message["code"], newUser)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	log.Println("new user added : ", message["userId"])
+	// notify all websockets on new user connections
+	err = notifyNewOffer(newUser)
+	return err
 }
 
 func withoutCurrentUser(id string, users []user) []user {

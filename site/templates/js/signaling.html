@@ -1,0 +1,151 @@
+{{ define "signaling" }}
+<script>
+    /*
+     *  Copyright (c) 2021 The WebRTC project authors. All Rights Reserved.
+     *
+     *  Use of this source code is governed by a BSD-style license
+     *  that can be found in the LICENSE file in the root of the source
+     *  tree.
+     */
+
+    let ws;
+    let localStream;
+    const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
+    const userId = crypto.randomUUID().split("-")[0];
+    const pc = new RTCPeerConnection(configuration);
+    const localCandidates = []
+    let remoteVideo = document.getElementById('remoteVideo');
+    let localVideo = document.getElementById('localVideo');
+    console.log("local connection id:", userId)
+
+    pc.onicecandidate = ({ candidate }) => handleCandidate(candidate);
+    pc.ontrack = (event) => {
+        if (remoteVideo.srcObject) return;
+        console.log("attaching remote view")
+        remoteVideo.srcObject = event.streams[0];
+        sendCandidates()
+    };
+
+    function startwebsocket(offer) {
+        console.log(offer)
+        if (offer.sdp == "") {
+            console.log("invalid offer", offer)
+            return
+        }
+        var loc = window.location;
+        var uri = 'ws:';
+        if (loc.protocol === 'https:') {
+            uri = 'wss:';
+        }
+        uri += '//' + loc.host + '/ws';
+        ws = new WebSocket(uri)
+        ws.json = (obj) => ws.send(JSON.stringify(obj));
+        ws.onopen = function () {
+            const msg = {
+                eventType: "offer",
+                userId: userId,
+                offer: offer.sdp,
+                code: "{{ .code }}",
+            }
+            ws.json(msg);
+        }
+
+        ws.onmessage = function (evt) {
+            const msg = JSON.parse(evt.data)
+            handleEventMessage(msg)
+        }
+    }
+
+    async function handleEventMessage(msg) {
+        switch (msg.eventType) {
+            case "newUser":
+                console.log("new User:", msg.userId)
+                handleOffer(msg)
+                break
+            case "removedUser": console.log("user " + msg.userId + " removed"); break
+            case "answer": handleAnswer(msg.answer); break
+            case "candidates": handleRemoteCandidates(msg); break
+            default: console.log("something happened but don't know what",msg); break
+        }
+    }
+
+    async function startLocalVideo() {
+        remoteVideo = document.getElementById('remoteVideo');
+        localVideo = document.getElementById('localVideo');
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        localVideo.srcObject = localStream;
+        localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+        const offer = await pc.createOffer();
+        startwebsocket(offer)
+        await pc.setLocalDescription(offer);
+    }
+
+
+
+    async function handleOffer(offerMessage) {
+        try {
+            const offerDescription = new RTCSessionDescription({ "type": "offer", "sdp": offerMessage.offer });
+            await pc.setRemoteDescription(offerDescription);
+            // Create an answer
+            const answer = await pc.createAnswer();
+            // Set local description with the answer
+            const responseMessage = {
+                eventType: "answer",
+                userId: userId,
+                forUser: offerMessage.userId,
+                answer: answer.sdp,
+                code: "{{ .code }}",
+            }
+            console.log("sending answer")
+            // Exchange the answer with the remote peer
+            ws.json(responseMessage)
+            await pc.setLocalDescription(answer);
+
+        } catch (error) {
+            console.error("Error handling offer:", error);
+        }
+    }
+
+    async function handleAnswer(answer) {
+        if (!pc) {
+            console.error('no peerconnection');
+            return;
+        }
+        console.log("handling answer")
+        await pc.setRemoteDescription({ "type": "answer", "sdp": answer });
+    }
+
+    async function sendCandidates() {
+        const message = {
+                eventType: "candidates",
+                userId: userId,
+                candidates: JSON.stringify(localCandidates),
+                code: "{{ .code }}",
+            }
+            ws.json(message)
+    }
+    async function handleRemoteCandidates(message) {
+        let candidates = JSON.parse(message.candidates)
+        for (c in candidates) {
+            console.log(candidates[c])
+            await pc.addIceCandidate(candidates[c])
+        }
+    }
+    async function handleCandidate(candidate) {
+        console.log(candidate)
+        if (candidate != null) {
+            localCandidates.push(candidate)
+            console.log("new candidate")
+        }
+        return
+        console.log('sending candidates')
+        const msg = {
+            message: "candidate",
+            userId: userId,
+            candidate: candidate,
+            code: "{{ .code }}",
+        }
+        ws.json(msg);
+    }
+</script>
+{{ end }}
