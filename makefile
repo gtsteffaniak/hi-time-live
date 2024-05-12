@@ -3,7 +3,7 @@ build:
 	cd site && go mod vendor && cd .. && \
 	docker build -t hi-time-live .
 
-# export GOROOT=$(go env GOROOT)
+# first run : export GOROOT=$(go env GOROOT)
 setup:
 	go run $(GOROOT)/src/crypto/tls/generate_cert.go --host localhost & \
 	mv *.pem ./site/

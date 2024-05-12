@@ -49,9 +49,12 @@ func attemptJoin(code string, user user) (*room, error) {
 func validCode(code string) bool {
 	// Regular expression to match UUID format
 	uuidRegex := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-
+	valid := uuidRegex.MatchString(code)
+	if !valid {
+		fmt.Printf("invalid code: '%s'", code)
+	}
 	// Check if the code matches the UUID format
-	return uuidRegex.MatchString(code)
+	return valid
 }
 
 func (r *room) removeUserFromRoom(id string) {

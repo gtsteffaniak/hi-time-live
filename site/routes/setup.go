@@ -22,7 +22,7 @@ func SetupRoutes(e *echo.Echo) {
 	setupMiddleware(e)
 	tempfiles, err := FindHTMLFiles("templates")
 	if err != nil {
-		panic("")
+		panic("could not load template files!")
 	}
 	// Register custom template renderer
 	renderer := &TemplateRenderer{
@@ -70,7 +70,11 @@ func roomHandler(e echo.Context) error {
 	id := e.QueryParam("id")
 	data := map[string]interface{}{}
 	data["code"] = id
-	return e.Render(200, "room.html", data)
+	if !validCode(id) {
+		return e.Render(200, "invalidRoom.html", data)
+	} else {
+		return e.Render(200, "room.html", data)
+	}
 }
 
 // Render renders a template document

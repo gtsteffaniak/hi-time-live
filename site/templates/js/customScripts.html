@@ -1,9 +1,10 @@
 {{ define "customScripts" }}
 <script>
   const code = "{{ .code }}"
-  const privacyModal = document.getElementById('privacyModal');
-  const startButton = privacyModal.querySelector('.button.is-primary.start');
-  startButton.onclick = async () => {
+
+  function startSession() {
+    const privacyModal = document.getElementById('privacyModal');
+    const startButton = privacyModal.querySelector('.button.is-primary.start');
     privacyModal.classList.add("hidden")
     const videos = document.getElementById('videos');
     const controls = document.getElementsByClassName('controls')[0]
@@ -16,6 +17,28 @@
     var copyText = document.getElementById("copyCode");
     copyText.select();
     document.execCommand("copy");
+    console.log("copied code: " + copyText.value);
+
   }
+
+  function goToRoom() {
+    var code = document.getElementById("copyCode").value;
+    window.location.href = "/room?id=" + code;
+  }
+
+  function loadJoinModal() {
+    let menu = document.getElementById('mainMenu');
+    let joinModal = document.getElementById('joinModal');
+    menu.classList.add("hidden")
+    joinModal.classList.remove("hidden")
+  }
+
+  function hideJoinModal() {
+    let menu = document.getElementById('mainMenu');
+    let joinModal = document.getElementById('joinModal');
+    menu.classList.remove("hidden")
+    joinModal.classList.add("hidden")
+  }
+
 </script>
 {{end}}

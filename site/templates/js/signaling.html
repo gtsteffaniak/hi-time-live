@@ -28,9 +28,7 @@
     };
 
     function startwebsocket(offer) {
-        console.log(offer)
         if (offer.sdp == "") {
-            console.log("invalid offer", offer)
             return
         }
         var loc = window.location;
@@ -128,12 +126,10 @@
     async function handleRemoteCandidates(message) {
         let candidates = JSON.parse(message.candidates)
         for (c in candidates) {
-            console.log(candidates[c])
             await pc.addIceCandidate(candidates[c])
         }
     }
     async function handleCandidate(candidate) {
-        console.log(candidate)
         if (candidate != null) {
             localCandidates.push(candidate)
             console.log("new candidate")

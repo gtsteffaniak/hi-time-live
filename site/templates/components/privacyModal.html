@@ -1,4 +1,4 @@
-{{ define "modal" }}
+{{ define "privacyModal" }}
 <div id="privacyModal" class="modal">
   <div class="animated-border-box-glow"></div>
   <article class="modal-container animated-border-box">
@@ -25,7 +25,7 @@
         <b></b>
       <div style="padding:1em;background-color:black;display:flex">
         <input style="width:100%" type="text" value="{{ .code }}" id="copyCode">
-        <span class="material-symbols-outlined button">
+        <span onclick="copyToClipboard()" class="material-symbols-outlined button">
           content_copy
         </span>
       </div>
@@ -39,7 +39,7 @@
     </section>
     <footer class="modal-container-footer">
       <button class="button is-ghost">Back</button>
-      <button class="button is-primary start">Start</button>
+      <button onclick="startSession()" class="button is-primary start">Start</button>
     </footer>
   </article>
 </div>
