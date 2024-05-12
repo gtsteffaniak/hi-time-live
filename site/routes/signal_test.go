@@ -2,6 +2,8 @@ package routes
 
 import (
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 var numConcurrent = 50
@@ -9,7 +11,8 @@ var numConcurrent = 50
 func TestConcurrentCreate(t *testing.T) {
 	// Goroutines for creating rooms
 	for i := 0; i < numConcurrent; i++ {
-		go createRoom()
+		id := uuid.New().String()
+		go createRoom(id)
 	}
 }
 
@@ -25,11 +28,11 @@ func TestConcurrentJoin(t *testing.T) {
 			offer: map[string]string{"key2": "value2"},
 		},
 	}
+	id := uuid.New().String()
 	for _, test := range tests {
 		for i := 0; i < numConcurrent; i++ {
 			go func(offer map[string]string) {
-				roomID := createRoom()
-				attemptJoin(roomID, offer)
+				attemptJoin(id, user{Id: uuid.New().String()})
 			}(test.offer)
 		}
 	}
