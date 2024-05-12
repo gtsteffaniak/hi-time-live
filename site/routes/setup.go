@@ -18,7 +18,7 @@ type TemplateRenderer struct {
 }
 
 func SetupRoutes(e *echo.Echo) {
-	e.Static("/", "frontend")
+	e.Static("/", "static")
 	setupMiddleware(e)
 	tempfiles, err := FindHTMLFiles("templates")
 	if err != nil {
