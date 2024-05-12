@@ -40,6 +40,7 @@ func setupMiddleware(e *echo.Echo) {
 		Format:           "[HTTP] ${time_custom} | ${status} | ${remote_ip} :${referrer} | ${method} | ${latency_human}  | \"${uri}\"\n",
 		Output:           e.Logger.Output(),
 	}))
+	e.Use(middleware.Secure())
 	e.Use(middleware.Recover())
 }
 

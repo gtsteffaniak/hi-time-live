@@ -16,6 +16,7 @@
     const localCandidates = []
     let remoteVideo = document.getElementById('remoteVideo');
     let localVideo = document.getElementById('localVideo');
+
     console.log("local connection id:", userId)
 
     pc.onicecandidate = ({ candidate }) => handleCandidate(candidate);
@@ -65,7 +66,7 @@
             case "removedUser": console.log("user " + msg.userId + " removed"); break
             case "answer": handleAnswer(msg.answer); break
             case "candidates": handleRemoteCandidates(msg); break
-            default: console.log("something happened but don't know what",msg); break
+            default: console.log("something happened but don't know what", msg); break
         }
     }
 
@@ -117,12 +118,12 @@
 
     async function sendCandidates() {
         const message = {
-                eventType: "candidates",
-                userId: userId,
-                candidates: JSON.stringify(localCandidates),
-                code: "{{ .code }}",
-            }
-            ws.json(message)
+            eventType: "candidates",
+            userId: userId,
+            candidates: JSON.stringify(localCandidates),
+            code: "{{ .code }}",
+        }
+        ws.json(message)
     }
     async function handleRemoteCandidates(message) {
         let candidates = JSON.parse(message.candidates)
