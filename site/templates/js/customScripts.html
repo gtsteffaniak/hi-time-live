@@ -3,7 +3,7 @@
   const code = "{{ .code }}"
 
   function startSession() {
-    const privacyModal = document.getElementById('privacyModal');
+    const privacyModal = document.getElementById('privacy-modal');
     const startButton = privacyModal.querySelector('.button.is-primary.start');
     privacyModal.classList.add("hidden")
     const videos = document.getElementById('videos');
@@ -28,14 +28,14 @@
 
   function loadJoinModal() {
     let menu = document.getElementById('mainMenu');
-    let joinModal = document.getElementById('joinModal');
+    let joinModal = document.getElementById('join-modal');
     menu.classList.add("hidden")
     joinModal.classList.remove("hidden")
   }
 
   function hideJoinModal() {
     let menu = document.getElementById('mainMenu');
-    let joinModal = document.getElementById('joinModal');
+    let joinModal = document.getElementById('join-modal');
     menu.classList.remove("hidden")
     joinModal.classList.add("hidden")
   }

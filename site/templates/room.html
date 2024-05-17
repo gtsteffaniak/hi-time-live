@@ -16,7 +16,7 @@
 </head>
 
 <body>
-  {{ template "privacyModal" . }}
+  {{ template "modalTemplate" .privacyModal }}
   {{ template "signaling" . }}
   {{ template "customScripts" . }}
 
@@ -26,8 +26,9 @@
   </div>
   <div class="controls hidden">
     <div>
-      <button id="switchButton" class="settings" onclick="switchMedia()">Switch
-        Camera</button>
+      <button id="switchButton" class="settings" onclick="switchMedia()">
+        Switch Camera
+      </button>
       <button id="muteButton" class="settings" onclick="toggleMute()">Unmuted</button>
       <button id="vidButton" class="settings" onclick="toggleVid()">Video Enabled</button>
       <button id="hangupButton" >Hang Up</button>

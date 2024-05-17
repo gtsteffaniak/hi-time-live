@@ -62,7 +62,13 @@ func FindHTMLFiles(rootPath string) ([]string, error) {
 }
 func indexHandler(e echo.Context) error {
 	data := map[string]interface{}{}
-	data["code"] = uuid.New().String()
+	id := uuid.New().String()
+	data["code"] = id
+	data["joinModal"] = map[string]string{
+		"modalType": "join",
+		"hidden":    "hidden",
+		"code":      id,
+	}
 	return e.Render(200, "main.html", data)
 }
 
@@ -70,6 +76,11 @@ func roomHandler(e echo.Context) error {
 	id := e.QueryParam("id")
 	data := map[string]interface{}{}
 	data["code"] = id
+	data["privacyModal"] = map[string]string{
+		"modalType": "privacy",
+		"hidden":    "",
+		"code":      id,
+	}
 	if !validCode(id) {
 		return e.Render(200, "invalidRoom.html", data)
 	} else {
