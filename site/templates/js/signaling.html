@@ -40,6 +40,9 @@
         ws = new WebSocket(uri)
         ws.json = (obj) => ws.send(JSON.stringify(obj));
         ws.onopen = function () {
+            updateStatusText("Sending Info")
+            document.querySelector('.cube.first').style.setProperty('--uib-color', 'green');
+
             const msg = {
                 eventType: "offer",
                 userId: userId,
@@ -47,6 +50,8 @@
                 code: "{{ .code }}",
             }
             ws.json(msg);
+            document.querySelector('.cube.second').style.setProperty('--uib-color', 'green');
+            updateStatusText("Waiting on Confirmation")
         }
 
         ws.onmessage = function (evt) {
@@ -57,6 +62,10 @@
 
     async function handleEventMessage(msg) {
         switch (msg.eventType) {
+            case "acknowledge":
+                updateStatusText("Waiting on others to join")
+                document.querySelector('.cube.third').style.setProperty('--uib-color', 'green');
+                break
             case "newUser":
                 console.log("new User:", msg.userId)
                 handleOffer(msg)
@@ -98,6 +107,8 @@
             console.log("sending answer")
             // Exchange the answer with the remote peer
             ws.json(responseMessage)
+            loadingModal = document.getElementById('loadingModal');
+            loadingModal.classList.add("hidden")
             await pc.setLocalDescription(answer);
 
         } catch (error) {

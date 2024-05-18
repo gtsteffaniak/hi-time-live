@@ -17,44 +17,26 @@
 
 <body>
   {{ template "privacyModal" . }}
+  {{ template "loadingModal" . }}
   {{ template "signaling" . }}
   {{ template "customScripts" . }}
+  <video id="localVideo" autoplay muted></video>
 
-  <div id="videos" class="vid-container hidden">
-    <video id="remoteVideo" class="remoteViews" autoplay></video>
-    <video id="localVideo" autoplay muted></video>
-  </div>
-  <div class="controls hidden">
-    <div>
-      <button id="switchButton" class="settings" onclick="switchMedia()">Switch
-        Camera</button>
-      <button id="muteButton" class="settings" onclick="toggleMute()">Unmuted</button>
-      <button id="vidButton" class="settings" onclick="toggleVid()">Video Enabled</button>
-      <button id="hangupButton" >Hang Up</button>
+  <div id="wrapper">
+    <div id="video-container">
+      <video id="remoteVideo" class="remote-views" autoplay muted></video>
     </div>
-    <div class="container">
-      <!-- code here -->
-      <nav class="menu">
-        <a href="#" class="menu-item">
-          <span class="material-icons">sports_esports</span>
-          <span class="menu-item-label">Games</span>
-        </a>
-        <a href="#" class="menu-item">
-          <span class="material-icons">camera_alt</span>
-          <span class="menu-item-label">Images</span>
-        </a>
-        <a href="#" class="menu-item">
-          <span class="material-icons">movie</span>
-          <span class="menu-item-label">Movies</span>
-        </a>
-        <a href="#" class="menu-item">
-          <span class="material-icons">store_mall_directory</span>
-          <span class="menu-item-label">Store</span>
-        </a>
-      </nav>
-      <!-- end of code -->
+    <div class="controls hidden">
+      <div>
+        <button id="switchButton" class="settings" onclick="switchMedia()">Switch
+          Camera</button>
+        <button id="muteButton" class="settings" onclick="toggleMute()">Unmuted</button>
+        <button id="vidButton" class="settings" onclick="toggleVid()">Video Enabled</button>
+        <button id="hangupButton" >Hang Up</button>
+      </div>
     </div>
   </div>
+
 </body>
 
 </html>

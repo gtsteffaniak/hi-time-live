@@ -35,13 +35,10 @@ func removeConnection(ws *websocket.Conn) {
 			}
 			room := rooms[roomCode]
 			room.removeUserFromRoom(userId)
-			message := map[string]any{
+			sendMessage(map[string]string{
 				"eventType": "removedUser",
 				"userId":    userId,
-			}
-			fmt.Println("disconnected ", userId)
-			jsonData, _ := json.Marshal(message)
-			_ = websocket.Message.Send(conn, string(jsonData))
+			}, conn)
 		}
 		delete(connections, ws)
 	}()
@@ -99,73 +96,71 @@ func wsHandler(c echo.Context) error {
 	return nil
 }
 
+func sendMessage(message map[string]string, ws *websocket.Conn) error {
+	jsonData, err := json.Marshal(message)
+	if err != nil {
+		return fmt.Errorf("new error %s", err)
+	}
+	err = websocket.Message.Send(ws, string(jsonData))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func notifyNewOffer(user user) error {
+	var err error
 	connLock.Lock()
 	defer connLock.Unlock()
 	for ws, conn := range connections {
 		if conn.userId == user.Id {
-			return nil
-		}
-		message := map[string]string{
-			"eventType":  "newUser",
-			"userId":     user.Id,
-			"offer":      user.Offer,
-			"candidates": "",
-		}
-		jsonData, err := json.Marshal(message)
-		if err != nil {
-			return fmt.Errorf("new error %s", err)
-		}
-		err = websocket.Message.Send(ws, string(jsonData))
-		if err != nil {
-			return err
+			err = sendMessage(map[string]string{
+				"eventType": "acknowledge",
+			}, ws)
+		} else {
+			err = sendMessage(map[string]string{
+				"eventType": "newUser",
+				"userId":    user.Id,
+				"offer":     user.Offer,
+			}, ws)
 		}
 	}
-	return nil
+	return err
 }
 
 func notifyNewAnswer(message map[string]string) error {
 	connLock.Lock()
 	defer connLock.Unlock()
-	var finalErr error // Define a variable to store the final error
+	var err error
 	for ws, conn := range connections {
 		if conn.userId != message["forUser"] {
 			continue
 		}
-		message := map[string]string{
+		err = sendMessage(map[string]string{
 			"eventType":  "answer",
 			"userId":     conn.userId,
 			"answer":     message["answer"],
 			"candidates": "",
-		}
-		jsonData, err := json.Marshal(message)
-		if err != nil {
-			return fmt.Errorf("new error %s", err)
-		}
-		finalErr = websocket.Message.Send(ws, string(jsonData))
+		}, ws)
 	}
-	return finalErr
+	return err
 }
+
 func notifyCandidates(message map[string]string) error {
 	connLock.Lock()
 	defer connLock.Unlock()
-	var finalErr error // Define a variable to store the final error
+	var err error // Define a variable to store the final error
 	for ws, conn := range connections {
 		if conn.userId == message["userId"] {
 			continue
 		}
-		message := map[string]string{
+		err = sendMessage(map[string]string{
 			"eventType":  "candidates",
 			"userId":     message["userId"],
 			"candidates": message["candidates"],
-		}
-		jsonData, err := json.Marshal(message)
-		if err != nil {
-			return fmt.Errorf("new error %s", err)
-		}
-		finalErr = websocket.Message.Send(ws, string(jsonData))
+		}, ws)
 	}
-	return finalErr
+	return err
 }
 
 func doNewUserStuff(message map[string]string) error {
@@ -182,14 +177,4 @@ func doNewUserStuff(message map[string]string) error {
 	// notify all websockets on new user connections
 	err = notifyNewOffer(newUser)
 	return err
-}
-
-func withoutCurrentUser(id string, users []user) []user {
-	var filteredUsers []user
-	for _, u := range users {
-		if u.Id != id {
-			filteredUsers = append(filteredUsers, u)
-		}
-	}
-	return filteredUsers
 }

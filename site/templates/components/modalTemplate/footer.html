@@ -1,0 +1,12 @@
+{{ define "modalFooter" }}
+<footer class="modal-container-footer">
+    {{ if eq .modalType "privacy" }}
+    <button class="button is-ghost">Back</button>
+    <button onclick="startSession()" class="button is-primary start">Start</button>
+    {{ end }}
+    {{ if eq .modalType "join" }}
+    <button onclick="hideJoinModal()" class="button is-ghost">Back</button>
+    <button onclick="goToRoom()" class="button is-primary start">Start</button>
+    {{end}}
+</footer>
+{{ end }}

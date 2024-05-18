@@ -4,11 +4,15 @@
 
   function startSession() {
     const privacyModal = document.getElementById('privacyModal');
+    const loadingModal = document.getElementById('loadingModal');
+
     const startButton = privacyModal.querySelector('.button.is-primary.start');
     privacyModal.classList.add("hidden")
+    loadingModal.classList.remove("hidden")
+
     const videos = document.getElementById('videos');
-    const controls = document.getElementsByClassName('controls')[0]
-    videos.classList.remove("hidden")
+    const controls = document.querySelector('.controls')
+    //videos.classList.remove("hidden")
     controls.classList.remove("hidden")
     startLocalVideo()
   };
@@ -18,7 +22,6 @@
     copyText.select();
     document.execCommand("copy");
     console.log("copied code: " + copyText.value);
-
   }
 
   function goToRoom() {
@@ -40,5 +43,9 @@
     joinModal.classList.add("hidden")
   }
 
+  function updateStatusText(message) {
+    let status = document.getElementById('status-text');
+    status.innerText = message
+  }
 </script>
 {{end}}
