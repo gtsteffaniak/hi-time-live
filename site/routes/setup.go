@@ -11,22 +11,17 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
-// https://flowbite.com/icons/ - used for icons
 // TemplateRenderer is a custom html/template renderer for Echo framework
 type TemplateRenderer struct {
-	templates *template.Template
+	templateDir string
 }
 
 func SetupRoutes(e *echo.Echo) {
 	e.Static("/", "static")
 	setupMiddleware(e)
-	tempfiles, err := FindHTMLFiles("templates")
-	if err != nil {
-		panic("could not load template files!")
-	}
 	// Register custom template renderer
 	renderer := &TemplateRenderer{
-		template.Must(template.ParseFiles(tempfiles...)),
+		templateDir: "templates",
 	}
 	e.Renderer = renderer
 	e.GET("/", indexHandler)
@@ -62,7 +57,13 @@ func FindHTMLFiles(rootPath string) ([]string, error) {
 }
 func indexHandler(e echo.Context) error {
 	data := map[string]interface{}{}
-	data["code"] = uuid.New().String()
+	id := uuid.New().String()
+	data["code"] = id
+	data["joinModal"] = map[string]string{
+		"modalType": "join",
+		"hidden":    "hidden",
+		"code":      id,
+	}
 	return e.Render(200, "main.html", data)
 }
 
@@ -70,6 +71,11 @@ func roomHandler(e echo.Context) error {
 	id := e.QueryParam("id")
 	data := map[string]interface{}{}
 	data["code"] = id
+	data["privacyModal"] = map[string]string{
+		"modalType": "privacy",
+		"hidden":    "",
+		"code":      id,
+	}
 	if !validCode(id) {
 		return e.Render(200, "invalidRoom.html", data)
 	} else {
@@ -79,6 +85,17 @@ func roomHandler(e echo.Context) error {
 
 // Render renders a template document
 func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
+
+	tempfiles, err := FindHTMLFiles(t.templateDir)
+	if err != nil {
+		return err
+	}
+
+	tmpl, err := template.ParseFiles(tempfiles...)
+	if err != nil {
+		return err
+	}
+
 	noCacheHeaders := map[string]string{
 		"Cache-Control":     "no-cache, private, max-age=0",
 		"Pragma":            "no-cache",
@@ -88,5 +105,5 @@ func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c 
 	for k, v := range noCacheHeaders {
 		c.Response().Header().Set(k, v)
 	}
-	return t.templates.ExecuteTemplate(w, name, data)
+	return tmpl.ExecuteTemplate(w, name, data)
 }

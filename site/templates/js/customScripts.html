@@ -11,7 +11,7 @@
     loadingModal.classList.remove("hidden")
 
     const videos = document.getElementById('videos');
-    const controls = document.querySelector('.controls')
+    const controls = document.getElementById('controls')
     //videos.classList.remove("hidden")
     controls.classList.remove("hidden")
     startLocalVideo()
@@ -31,14 +31,14 @@
 
   function loadJoinModal() {
     let menu = document.getElementById('mainMenu');
-    let joinModal = document.getElementById('joinModal');
+    let joinModal = document.getElementById('join-modal');
     menu.classList.add("hidden")
     joinModal.classList.remove("hidden")
   }
 
   function hideJoinModal() {
     let menu = document.getElementById('mainMenu');
-    let joinModal = document.getElementById('joinModal');
+    let joinModal = document.getElementById('join-modal');
     menu.classList.remove("hidden")
     joinModal.classList.add("hidden")
   }

@@ -121,6 +121,8 @@
             console.error('no peerconnection');
             return;
         }
+        loadingModal = document.getElementById('loadingModal');
+        loadingModal.classList.add("hidden")
         console.log("handling answer")
         await pc.setRemoteDescription({ "type": "answer", "sdp": answer });
     }

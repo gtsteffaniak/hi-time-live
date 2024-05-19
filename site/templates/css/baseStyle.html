@@ -1,19 +1,26 @@
 {{ define "baseStyle" }}
 <style>
-    *, *:after, *:before {
+    *,
+    *:after,
+    *:before {
         box-sizing: border-box;
     }
+
+    html,
+    body {
+        height: 100%;
+        width: 100%;
+    }
+
     body {
         background-image: radial-gradient(#7d0e9e, #000 100%);
         line-height: 1.5;
         font-family: "Outfit", sans-serif;
         color: white;
-        height: 100vh;
         display: flex;
-        flex-direction: column;
-        align-items: center;
         margin: 0;
-        padding: 1em;
+        padding: 0;
+        align-items: center;
     }
 
     button,
@@ -42,18 +49,6 @@
         border-radius: 99px;
         background-color: #ddd;
         border: 4px solid #fff;
-    }
-
-    .modal {
-        color: lightgray;
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
     }
 
     .modal-container {
@@ -130,8 +125,8 @@
         left: 50%;
         transform: translate(-50%, -50%) rotate(0deg);
         position: absolute;
-        width: 200%;
-        height: 200%;
+        width: 250%;
+        height: 250%;
         background-repeat: no-repeat;
         background-position: 0 0;
         /*border color, change middle color*/
@@ -161,6 +156,7 @@
             transform: translate(-50%, -50%) rotate(1turn);
         }
     }
+
     .center-box {
         height: 100vh;
         display: flex;
@@ -170,6 +166,7 @@
     }
 
     .rtf {
+
         h1,
         h2,
         h3,
