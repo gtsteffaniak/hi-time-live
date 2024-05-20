@@ -6,34 +6,34 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
-  test-backend:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
         with:
           go-version: 1.22.0
-      - run: cd backend && go test -race -v ./...
-  lint-backend:
+      - run: cd site && go test -race -v ./...
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
         with:
           go-version: 1.22.0
-      - run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.54.2
-      - run: cd backend && golangci-lint run
-  format-backend:
+      - run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - run: cd site && golangci-lint run
+  format:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
         with:
           go-version: 1.22.0
-      - run: cd backend && go fmt ./...
+      - run: cd site && go fmt ./...
 
   push_release_to_registry:
-    needs: [ lint-backend, test-backend, format-backend]
+    needs: [ lint, test, format]
     name: Push release
     runs-on: ubuntu-latest
     steps:
@@ -48,7 +48,7 @@ jobs:
         # See https://github.com/docker/build-push-action/issues/761
         with:
           driver-opts: |
-            image=moby/buildkit:v0.10.6
+            image=moby/buildkit:latest
       - name: Login to Docker Hub
         # Only push to Docker Hub when making a release
         uses: docker/login-action@v3
