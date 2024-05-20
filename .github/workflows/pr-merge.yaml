@@ -1,0 +1,70 @@
+name: pr-merge
+
+on:
+  pull_request:
+    branches:
+      - 'main'
+      - 'dev_v*'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
+        with:
+          go-version: 1.22.0
+      - run: cd backend && go test -race -v ./...
+  lint-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
+        with:
+          go-version: 1.22.0
+      - run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.54.2
+      - run: cd backend && golangci-lint run
+  format-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
+        with:
+          go-version: 1.22.0
+      - run: cd backend && go fmt ./...
+
+  push_pr_to_registry:
+    name: Push PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3.0.0
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.0.0
+        # Workaround to fix error:
+        # failed to push: failed to copy: io: read/write on closed pipe
+        # See https://github.com/docker/build-push-action/issues/761
+        with:
+          driver-opts: |
+            image=moby/buildkit:v0.10.6
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        with:
+          images: gtstef/hitime
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
