@@ -39,7 +39,7 @@ func notifyClosedConnection(id string) {
 	connLock.Lock()
 	defer connLock.Unlock()
 	for _, c := range connections {
-		c.sendMessage(map[string]string{
+		_ = c.sendMessage(map[string]string{
 			"eventType": "removedUser",
 			"userId":    id,
 		})
@@ -110,14 +110,13 @@ func (conn connection) sendMessage(message map[string]string) error {
 	return nil
 }
 
-func notifyNewOffer(message map[string]string) error {
-	var err error
+func notifyNewOffer(message map[string]string) {
 	connLock.Lock()
 	defer connLock.Unlock()
 	for _, conn := range connections {
 		if conn.userId != message["userId"] {
 			fmt.Println("notifyNewOffer " + conn.userId)
-			err = conn.sendMessage(map[string]string{
+			_ = conn.sendMessage(map[string]string{
 				"eventType":  "newOffer",
 				"userId":     message["userId"],
 				"offer":      message["offer"],
@@ -125,44 +124,40 @@ func notifyNewOffer(message map[string]string) error {
 			})
 		}
 	}
-	return err
 }
 
-func notifyNewAnswer(message map[string]string) error {
+func notifyNewAnswer(message map[string]string) {
 	connLock.Lock()
 	defer connLock.Unlock()
-	var err error
 	for _, conn := range connections {
 		if conn.userId != message["forUser"] {
 			continue
 		}
 		fmt.Println("new answer notify " + conn.userId)
-		err = conn.sendMessage(map[string]string{
+		_ = conn.sendMessage(map[string]string{
 			"eventType":  "answer",
 			"userId":     message["userId"],
 			"answer":     message["answer"],
 			"candidates": message["candidates"],
 		})
 	}
-	return err
 }
 
-func (conn connection) doNewUserStuff(message map[string]string) error {
+func (conn connection) doNewUserStuff(message map[string]string) {
 	userId := message["userId"]
 	var err error
 	numUsers, err := attemptJoin(message["code"], userId)
 	if err != nil {
 		fmt.Println(err)
-		return err
+		return
 	}
-	conn.sendMessage(map[string]string{
+	_ = conn.sendMessage(map[string]string{
 		"eventType": "acknowledge",
 	})
 	if numUsers > 1 {
 		notifyNewUser(userId)
 	}
 	log.Println("new user added : ", userId)
-	return err
 }
 
 func notifyNewUser(userId string) {
@@ -171,7 +166,7 @@ func notifyNewUser(userId string) {
 	for _, conn := range connections {
 		if conn.userId != userId {
 			fmt.Println("sending new user notify: ", conn.userId)
-			conn.sendMessage(map[string]string{
+			_ = conn.sendMessage(map[string]string{
 				"eventType": "newUser",
 				"userId":    userId,
 			})

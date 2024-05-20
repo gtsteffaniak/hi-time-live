@@ -13,3 +13,9 @@ run:
 
 test:
 	cd site && go test -v --race ./...
+
+lint:
+	cd site && golangci-lint run
+
+format:
+	cd site && go fmt ./...

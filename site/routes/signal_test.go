@@ -12,7 +12,7 @@ func TestConcurrentCreate(t *testing.T) {
 	// Goroutines for creating rooms
 	for i := 0; i < numConcurrent; i++ {
 		id := uuid.New().String()
-		go createRoom(id)
+		go getRoom(id)
 	}
 }
 
@@ -32,7 +32,10 @@ func TestConcurrentJoin(t *testing.T) {
 	for _, test := range tests {
 		for i := 0; i < numConcurrent; i++ {
 			go func(offer map[string]string) {
-				attemptJoin(id, user{Id: uuid.New().String()})
+				_, err := attemptJoin(id, uuid.New().String())
+				if err != nil {
+					t.Errorf("Error joining room: %v", err)
+				}
 			}(test.offer)
 		}
 	}
