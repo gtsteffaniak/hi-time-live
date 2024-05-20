@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>Hi Time Live</title>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+  <meta name="author" content="Graham Steffaniak">
+  <meta name="msapplication-TileColor" content="#7d0e9e">
+  <meta name="theme-color" content="#7d0e9e">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" />
+  {{ template "baseStyle" }}
+  {{ template "roomStyle" }}
+</head>
+
+<body>
+  {{ template "privacyModal" . }}
+  {{ template "loadingModal" . }}
+  {{ template "signaling" . }}
+  {{ template "customScripts" . }}
+  <video id="localVideo" autoplay muted></video>
+
+  <div id="video-container">
+  </div>
+  <div id="controls" class="hidden">
+    <div>
+      <button id="switchButton" class="settings" onclick="switchMedia()">Switch
+        Camera</button>
+      <button id="muteButton" class="settings" onclick="toggleMute()">Unmuted</button>
+      <button id="vidButton" class="settings" onclick="toggleVid()">Video Enabled</button>
+      <button id="hangupButton" >Hang Up</button>
+    </div>
+  </div>
+
+</body>
+
+</html>

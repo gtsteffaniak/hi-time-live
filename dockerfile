@@ -1,9 +1,12 @@
 FROM golang:1.22-alpine
 WORKDIR /app
 COPY ["./","./"]
-WORKDIR /app/backend
-RUN go build .
+WORKDIR /app/site
+RUN go build -ldflags='-w -s' .
 
-FROM alpine
-COPY --from=0 ["/app/backend/hi-time-live","/app/frontend","./"] 
+FROM scratch
+WORKDIR /app
+COPY --from=0 ["/app/site/hi-time-live","./"] 
+COPY ["site/templates/*","./templates"] 
+COPY ["site/static","./static"] 
 CMD ["./hi-time-live"]

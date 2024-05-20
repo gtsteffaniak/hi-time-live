@@ -1,0 +1,22 @@
+{{ define "joinModal" }}
+<div id="join-modal" class="modal hidden">
+  <article class="modal-container animated-border-box">
+    <header class="modal-container-header">
+      <h1 class="modal-container-title">
+        Join Room
+      </h1>
+    </header>
+    <section class="modal-container-body rtf">
+      <h2>Enter the code provided to you:</h2>
+      <div style="padding:1em;background-color:black;display:flex">
+        <input style="width:100%" type="text" placeholder="enter room code" value="" id="copyCode">
+      </div>
+      </p>
+    </section>
+    <footer class="modal-container-footer">
+      <button onclick="hideJoinModal()" class="button is-ghost">Back</button>
+      <button onclick="goToRoom()" class="button is-primary start">Start</button>
+    </footer>
+  </article>
+</div>
+{{ end }}
