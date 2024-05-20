@@ -73,7 +73,6 @@ func wsHandler(c echo.Context) error {
 			}
 			newConnection.userId = message["userId"]
 			newConnection.roomId = message["code"]
-			fmt.Println("adding new connection")
 			connLock.Lock()
 			connections[connId] = newConnection
 			connLock.Unlock()
@@ -84,17 +83,16 @@ func wsHandler(c echo.Context) error {
 }
 
 func (conn connection) eventRouter(message map[string]string) {
-	fmt.Println(message["userId"] + " " + conn.id)
 	switch eventType := message["eventType"]; eventType {
-	case "offer":
-		fmt.Println("recieved offer from " + conn.userId)
+	case "newUser":
+		fmt.Println("newUser :", conn.userId)
 		conn.doNewUserStuff(message)
+	case "newOffer":
+		fmt.Println("newOffer " + conn.userId)
+		notifyNewOffer(message)
 	case "answer":
-		fmt.Println("recieved answer from " + conn.userId)
+		fmt.Println("answer " + conn.userId)
 		notifyNewAnswer(message)
-	case "candidates":
-		fmt.Println("recieved candidates from " + conn.userId)
-		processCandidates(message)
 	default:
 		fmt.Println("defaulting")
 	}
@@ -112,22 +110,18 @@ func (conn connection) sendMessage(message map[string]string) error {
 	return nil
 }
 
-func notifyNewOffer(userId, offer string) error {
+func notifyNewOffer(message map[string]string) error {
 	var err error
 	connLock.Lock()
 	defer connLock.Unlock()
 	for _, conn := range connections {
-		if conn.userId == userId {
-			fmt.Println("new user ACK " + conn.userId)
+		if conn.userId != message["userId"] {
+			fmt.Println("notifyNewOffer " + conn.userId)
 			err = conn.sendMessage(map[string]string{
-				"eventType": "acknowledge",
-			})
-		} else {
-			fmt.Println("new user notify " + conn.userId)
-			err = conn.sendMessage(map[string]string{
-				"eventType": "newUser",
-				"userId":    userId,
-				"offer":     offer,
+				"eventType":  "newOffer",
+				"userId":     message["userId"],
+				"offer":      message["offer"],
+				"candidates": message["candidates"],
 			})
 		}
 	}
@@ -135,7 +129,6 @@ func notifyNewOffer(userId, offer string) error {
 }
 
 func notifyNewAnswer(message map[string]string) error {
-	fmt.Println("notifying")
 	connLock.Lock()
 	defer connLock.Unlock()
 	var err error
@@ -145,27 +138,9 @@ func notifyNewAnswer(message map[string]string) error {
 		}
 		fmt.Println("new answer notify " + conn.userId)
 		err = conn.sendMessage(map[string]string{
-			"eventType": "answer",
-			"userId":    conn.userId,
-			"answer":    message["answer"],
-		})
-	}
-	return err
-}
-
-func processCandidates(message map[string]string) error {
-	fmt.Println("processing")
-	connLock.Lock()
-	defer connLock.Unlock()
-	var err error // Define a variable to store the final error
-	for _, conn := range connections {
-		if conn.userId == message["userId"] {
-			continue
-		}
-		fmt.Println("new candidate notify " + conn.id)
-		err = conn.sendMessage(map[string]string{
-			"eventType":  "candidates",
+			"eventType":  "answer",
 			"userId":     message["userId"],
+			"answer":     message["answer"],
 			"candidates": message["candidates"],
 		})
 	}
@@ -174,14 +149,32 @@ func processCandidates(message map[string]string) error {
 
 func (conn connection) doNewUserStuff(message map[string]string) error {
 	userId := message["userId"]
-	offer := message["offer"]
-	_, err := attemptJoin(message["code"], userId)
+	var err error
+	numUsers, err := attemptJoin(message["code"], userId)
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
+	conn.sendMessage(map[string]string{
+		"eventType": "acknowledge",
+	})
+	if numUsers > 1 {
+		notifyNewUser(userId)
+	}
 	log.Println("new user added : ", userId)
-	// notify all websockets on new user connections
-	err = notifyNewOffer(userId, offer)
 	return err
+}
+
+func notifyNewUser(userId string) {
+	connLock.Lock()
+	defer connLock.Unlock()
+	for _, conn := range connections {
+		if conn.userId != userId {
+			fmt.Println("sending new user notify: ", conn.userId)
+			conn.sendMessage(map[string]string{
+				"eventType": "newUser",
+				"userId":    userId,
+			})
+		}
+	}
 }

@@ -3,6 +3,7 @@ package routes
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sync"
 )
 
@@ -26,16 +27,19 @@ func getRoom(roomId string) *room {
 	return rooms[roomId]
 }
 
-func attemptJoin(code string, user string) (*room, error) {
+func attemptJoin(code string, user string) (int, error) {
 	if !validCode(code) {
-		return nil, fmt.Errorf("could not validate code: %s", code)
+		return 0, fmt.Errorf("could not validate code: %s", code)
 	}
-	fmt.Println("adding user to room")
 	room := getRoom(code)
 	room.mu.Lock()
 	defer room.mu.Unlock()
+	if slices.Contains(room.users, user) {
+		return 0, fmt.Errorf("user already exists: %v ", user)
+	}
 	room.users = append(room.users, user)
-	return room, nil
+	num := len(room.users)
+	return num, nil
 }
 
 func validCode(code string) bool {

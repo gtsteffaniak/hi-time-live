@@ -12,62 +12,162 @@
     let localStream;
     const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
     const userId = crypto.randomUUID().split("-")[0];
-    let pc = new RTCPeerConnection(configuration);
+    let pcs = {}
     const localCandidates = [];
     let localVideo = document.getElementById('localVideo');
 
     console.log("local connection id:", userId)
 
-    pc.onicecandidate = ({ candidate }) => handleCandidate(candidate);
-    pc.ontrack = (event) => {
-        let remoteVideo = document.getElementById('remoteVideo');
-        if (remoteVideo.srcObject) return;
-        console.log("attaching remote view")
-        remoteVideo.srcObject = event.streams[0];
-        sendCandidates()
-    };
+    function delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
 
-    function startwebsocket(offer) {
-        if (offer.sdp == "") {
-            return
+    async function createRemoteVideoStream(id) {
+        // Create the video element
+        const videoElement = document.createElement('video');
+        videoElement.id = id+'-remoteVideo';
+        videoElement.className = 'remote-views';
+        videoElement.autoplay = true;
+        videoElement.muted = true;
+
+        // Append the video element to the container
+        const videoContainer = document.getElementById('video-container');
+        videoContainer.appendChild(videoElement);
+        pcs[id].ontrack = (event) => {
+            let remoteVideo = document.getElementById(videoElement.id);
+            if (remoteVideo.srcObject) return;
+            console.log("attaching remote view")
+            remoteVideo.srcObject = event.streams[0];
+        };
+    }
+
+    function removeRemoteVideoStream(id) {
+        const videoElement = document.getElementById(id+'-remoteVideo');
+        if (videoElement) {
+            videoElement.remove(); // Removes the video element from the DOM
         }
+        const count = videoContainer.getElementsByTagName('video').length;
+
+        if (count <= 0) {
+            updateStatusText("Waiting on others to join")
+            loadingModal = document.getElementById('loadingModal');
+            loadingModal.classList.remove("hidden")
+        } 
+    }
+
+    async function waitForCandidates(id) {
+        pcs[id].onicecandidate = ({ candidate }) => handleCandidate(candidate);
+        createRemoteVideoStream(id)
+        localVideo = document.getElementById('localVideo');
+        if (localVideo.srcObject) {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+            localVideo.srcObject = localStream;
+            localStream.getTracks().forEach((track) => pcs[id].addTrack(track, localStream));
+        }       
+        const offer = await pcs[id].createOffer();
+        await pcs[id].setLocalDescription(offer);
+        for (let i = 0; i < 10; i++) {
+            await delay(500);
+            if (localCandidates.length > 10) {
+                await delay(500);
+                return
+            }
+        }
+    }
+
+    async function handleOffer(msg) {
+        let id = msg.userId
+        const offerDescription = new RTCSessionDescription({ "type": "offer", "sdp": msg.offer });
+        await pcs[id].setRemoteDescription(offerDescription);
+        handleRemoteCandidates(msg)
+
+        // Create an answer
+        const answer = await pcs[id].createAnswer();
+        // Set local description with the answer
+        const responseMessage = {
+            eventType: "answer",
+            userId: userId,
+            forUser: id,
+            answer: answer.sdp,
+            candidates: JSON.stringify(localCandidates),
+            code: "{{ .code }}",
+        }
+        console.log("sending answer", id)
+        // Exchange the answer with the remote peer
+        ws.json(responseMessage)
+        loadingModal = document.getElementById('loadingModal');
+        loadingModal.classList.add("hidden")
+        await pcs[id].setLocalDescription(answer);
+    }
+
+    async function handleCreateOffer(id) {
+        updateStatusText("Attempting to connect to new user")
+        const myoffer = await pcs[id].createOffer();
+        await pcs[id].setLocalDescription(myoffer);
+        // Set local description with the answer
+        const responseMessage = {
+            eventType: "newOffer",
+            userId: userId,
+            offer: myoffer.sdp,
+            candidates: JSON.stringify(localCandidates),
+            code: "{{ .code }}",
+        }
+        console.log("sending offer to ", id)
+        // Exchange the answer with the remote peer
+        ws.json(responseMessage)
+    }
+
+    async function newWebRTC(id, msg = {}) {
+        if (pcs[id]) {
+            pcs[id] = null
+        }
+        pcs[id] = await new RTCPeerConnection(configuration);
+        await waitForCandidates(id)
+        if ('offer' in msg) {
+            console.log("handing with offer ",id)
+            handleOffer(msg)
+        } else {
+            console.log("handing without offer ",id)
+            handleCreateOffer(id)
+        }
+    }
+
+    function startwebsocket() {
         var loc = window.location;
         uri = 'wss://' + loc.host + '/ws';
         ws = new WebSocket(uri)
         ws.json = (obj) => ws.send(JSON.stringify(obj));
         ws.onopen = function () {
-            updateStatusText("Sending Info")
-            document.querySelector('.cube.first').style.setProperty('--uib-color', 'green');
-
             const msg = {
-                eventType: "offer",
+                eventType: "newUser",
                 userId: userId,
-                offer: offer.sdp,
                 code: "{{ .code }}",
             }
             ws.json(msg);
             document.querySelector('.cube.second').style.setProperty('--uib-color', 'green');
             updateStatusText("Waiting on Confirmation")
         }
-
         ws.onmessage = function (evt) {
             const msg = JSON.parse(evt.data)
-            handleEventMessage(msg)
+            eventRouter(msg)
         }
     }
 
-    async function handleEventMessage(msg) {
+    async function eventRouter(msg) {
         switch (msg.eventType) {
+            case "newUser":
+                newWebRTC(msg.userId)
+                break
             case "acknowledge":
                 updateStatusText("Waiting on others to join")
                 document.querySelector('.cube.third').style.setProperty('--uib-color', 'green');
                 break
-            case "newUser":
-                console.log("new User:", msg.userId)
-                handleOffer(msg)
+            case "newOffer":
+                console.log("newOffer:", msg.userId)
+                newWebRTC(msg.userId, msg)
                 break
             case "removedUser": handleClose(msg); break
-            case "answer": handleAnswer(msg.answer); break
+            case "answer": handleAnswer(msg); break
             case "candidates": handleRemoteCandidates(msg); break
             default: console.log("something happened but don't know what", msg); break
         }
@@ -77,100 +177,43 @@
         localVideo = document.getElementById('localVideo');
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
         localVideo.srcObject = localStream;
-        localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
-        const offer = await pc.createOffer();
-        startwebsocket(offer)
-        await pc.setLocalDescription(offer);
+        startwebsocket()
     }
 
     async function handleClose(msg) {
-        if (pc) {
-            pc.close();
-            pc = null;
+        if (pcs[msg.userId]) {
+            pcs[msg.userId].close();
+            pcs[msg.userId] = null;
         }
+        removeRemoteVideoStream(msg.userId)
         console.log("closed video of peer")
     }
 
-    function setupPcIfNeeded() {
-        if (!pc) {
-            alert("remaking")
-            console.log("remaking pc")
-            pc = new RTCPeerConnection(configuration);
-        }
-    }
+    async function handleAnswer(msg) {
+        console.log(msg.userId, " handling answer ", msg)
+        await pcs[msg.userId].setRemoteDescription({ "type": "answer", "sdp": msg.answer });
+        handleRemoteCandidates(msg)
 
-    async function handleOffer(offerMessage) {
-        try {
-            const offerDescription = new RTCSessionDescription({ "type": "offer", "sdp": offerMessage.offer });
-            setupPcIfNeeded()
-            await pc.setRemoteDescription(offerDescription);
-
-            // Create an answer
-            const answer = await pc.createAnswer();
-            // Set local description with the answer
-            const responseMessage = {
-                eventType: "answer",
-                userId: userId,
-                forUser: offerMessage.userId,
-                answer: answer.sdp,
-                code: "{{ .code }}",
-            }
-            console.log("sending answer")
-            // Exchange the answer with the remote peer
-            ws.json(responseMessage)
-            loadingModal = document.getElementById('loadingModal');
-            loadingModal.classList.add("hidden")
-            await pc.setLocalDescription(answer);
-
-        } catch (error) {
-            console.error("Error handling offer:", error);
-        }
-    }
-
-    async function handleAnswer(answer) {
-        setupPcIfNeeded()
         loadingModal = document.getElementById('loadingModal');
         loadingModal.classList.add("hidden")
-        console.log("handling answer")
-        await pc.setRemoteDescription({ "type": "answer", "sdp": answer });
-        sendCandidates()
         console.log("done handling answer")
     }
 
-    async function sendCandidates() {
-        const message = {
-            eventType: "candidates",
-            userId: userId,
-            candidates: JSON.stringify(localCandidates),
-            code: "{{ .code }}",
-        }
-        ws.json(message)
-    }
-
     async function handleRemoteCandidates(message) {
-        setupPcIfNeeded()
         console.log("pc for candidates")
         let candidates = JSON.parse(message.candidates)
         for (c in candidates) {
-            await pc.addIceCandidate(candidates[c])
+            await pcs[message["userId"]].addIceCandidate(candidates[c])
         }
     }
 
     async function handleCandidate(candidate) {
         if (candidate != null) {
-            localCandidates.push(candidate)
             console.log("new candidate")
+            localCandidates.push(candidate)
         }
-        return
-        console.log('sending candidates')
-        const msg = {
-            message: "candidate",
-            userId: userId,
-            candidate: candidate,
-            code: "{{ .code }}",
-        }
-        ws.json(msg);
+
     }
-    
+
 </script>
 {{ end }}
