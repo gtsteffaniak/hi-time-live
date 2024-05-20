@@ -1,46 +1,47 @@
 {{ define "mainMenu" }}
-<div id="mainMenu" class="menu-container">
-  <div style="display:flex;justify-content: center;">
-    <a href="index.html" class="logo">
-      <img width="250px" src="img/hitime.png" alt="Hi Time Live">
-    </a>
-  </div>
-  <nav class="menu">
-    <a href="room?id={{ .code }}" class="menu-item">
-      <span class="material-symbols-outlined">
-        add_circle
-      </span>
-      <div class="menu-item-content">
-        <span class="menu-item-title">Create a new room</span>
-        <span class="menu-item-description">Create a new room and sharable room code</span>
-      </div>
-    </a>
-    <a onclick="loadJoinModal()" class="menu-item">
-      <span class="material-symbols-outlined">
-        input_circle
-      </span>
-      <div class="menu-item-content">
-        <span class="menu-item-title">Join Existing Room</span>
-        <span class="menu-item-description">
-          Join with a code for an existing room
+<div class="modal">
+  <div id="mainMenu" class="menu-container">
+    <div style="display:flex;justify-content: center;">
+      <a href="index.html" class="logo">
+        <img width="250px" src="img/hitime.png" alt="Hi Time Live">
+      </a>
+    </div>
+    <nav class="menu">
+      <a href="room?id={{ .code }}" class="menu-item">
+        <span class="material-symbols-outlined">
+          add_circle
         </span>
-      </div>
-    </a>
-  </nav>
-  <div class="menu-footer">
-    <a href="#" class="menu-footer-item">
-      <span class="material-symbols-outlined">
-        help
-      </span>
-      About
-    </a>
-    <a href="#" class="menu-footer-item">
-      <span class="material-symbols-outlined">
-        person_raised_hand
-      </span>
-      Support
-    </a>
+        <div class="menu-item-content">
+          <span class="menu-item-title">Create a new room</span>
+          <span class="menu-item-description">Create a new room and sharable room code</span>
+        </div>
+      </a>
+      <a onclick="loadJoinModal()" class="menu-item">
+        <span class="material-symbols-outlined">
+          input_circle
+        </span>
+        <div class="menu-item-content">
+          <span class="menu-item-title">Join Existing Room</span>
+          <span class="menu-item-description">
+            Join with a code for an existing room
+          </span>
+        </div>
+      </a>
+    </nav>
+    <div class="menu-footer">
+      <a href="#" class="menu-footer-item">
+        <span class="material-symbols-outlined">
+          help
+        </span>
+        About
+      </a>
+      <a href="#" class="menu-footer-item">
+        <span class="material-symbols-outlined">
+          person_raised_hand
+        </span>
+        Support
+      </a>
+    </div>
   </div>
 </div>
-
 {{end}}

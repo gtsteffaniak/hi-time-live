@@ -12,15 +12,15 @@
     let localStream;
     const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
     const userId = crypto.randomUUID().split("-")[0];
-    const pc = new RTCPeerConnection(configuration);
-    const localCandidates = []
-    let remoteVideo = document.getElementById('remoteVideo');
+    let pc = new RTCPeerConnection(configuration);
+    const localCandidates = [];
     let localVideo = document.getElementById('localVideo');
 
     console.log("local connection id:", userId)
 
     pc.onicecandidate = ({ candidate }) => handleCandidate(candidate);
     pc.ontrack = (event) => {
+        let remoteVideo = document.getElementById('remoteVideo');
         if (remoteVideo.srcObject) return;
         console.log("attaching remote view")
         remoteVideo.srcObject = event.streams[0];
@@ -32,11 +32,7 @@
             return
         }
         var loc = window.location;
-        var uri = 'ws:';
-        if (loc.protocol === 'https:') {
-            uri = 'wss:';
-        }
-        uri += '//' + loc.host + '/ws';
+        uri = 'wss://' + loc.host + '/ws';
         ws = new WebSocket(uri)
         ws.json = (obj) => ws.send(JSON.stringify(obj));
         ws.onopen = function () {
@@ -70,7 +66,7 @@
                 console.log("new User:", msg.userId)
                 handleOffer(msg)
                 break
-            case "removedUser": console.log("user " + msg.userId + " removed"); break
+            case "removedUser": handleClose(msg); break
             case "answer": handleAnswer(msg.answer); break
             case "candidates": handleRemoteCandidates(msg); break
             default: console.log("something happened but don't know what", msg); break
@@ -78,7 +74,6 @@
     }
 
     async function startLocalVideo() {
-        remoteVideo = document.getElementById('remoteVideo');
         localVideo = document.getElementById('localVideo');
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
         localVideo.srcObject = localStream;
@@ -88,12 +83,28 @@
         await pc.setLocalDescription(offer);
     }
 
+    async function handleClose(msg) {
+        if (pc) {
+            pc.close();
+            pc = null;
+        }
+        console.log("closed video of peer")
+    }
 
+    function setupPcIfNeeded() {
+        if (!pc) {
+            alert("remaking")
+            console.log("remaking pc")
+            pc = new RTCPeerConnection(configuration);
+        }
+    }
 
     async function handleOffer(offerMessage) {
         try {
             const offerDescription = new RTCSessionDescription({ "type": "offer", "sdp": offerMessage.offer });
+            setupPcIfNeeded()
             await pc.setRemoteDescription(offerDescription);
+
             // Create an answer
             const answer = await pc.createAnswer();
             // Set local description with the answer
@@ -117,14 +128,13 @@
     }
 
     async function handleAnswer(answer) {
-        if (!pc) {
-            console.error('no peerconnection');
-            return;
-        }
+        setupPcIfNeeded()
         loadingModal = document.getElementById('loadingModal');
         loadingModal.classList.add("hidden")
         console.log("handling answer")
         await pc.setRemoteDescription({ "type": "answer", "sdp": answer });
+        sendCandidates()
+        console.log("done handling answer")
     }
 
     async function sendCandidates() {
@@ -136,12 +146,16 @@
         }
         ws.json(message)
     }
+
     async function handleRemoteCandidates(message) {
+        setupPcIfNeeded()
+        console.log("pc for candidates")
         let candidates = JSON.parse(message.candidates)
         for (c in candidates) {
             await pc.addIceCandidate(candidates[c])
         }
     }
+
     async function handleCandidate(candidate) {
         if (candidate != null) {
             localCandidates.push(candidate)
@@ -157,5 +171,6 @@
         }
         ws.json(msg);
     }
+    
 </script>
 {{ end }}

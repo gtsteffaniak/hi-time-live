@@ -19,6 +19,7 @@
         align-items: center;
         flex-grow: 1;
         text-decoration: none;
+
         &:focus,
         &:hover {
             outline: none;
@@ -42,10 +43,10 @@
     }
 
     #video-container {
-        flex-grow: 1;
-        display: flex;
-        flex-wrap: wrap;
-        overflow: auto;
+        display:flex;
+        position:fixed;
+        height: 100%;
+        width: 100%;
     }
 
     .remote-views {
@@ -54,7 +55,8 @@
     }
 
     #controls {
-        flex-shrink:0;
+        position: absolute;
+        bottom: 0;
     }
 
     .settings {

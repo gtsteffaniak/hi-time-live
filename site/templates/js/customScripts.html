@@ -26,7 +26,15 @@
 
   function goToRoom() {
     var code = document.getElementById("copyCode").value;
-    window.location.href = "/room?id=" + code;
+    const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    // Use the match method to find the UUID in the string
+    const match = code.match(uuidPattern);
+    // If a match is found, return the matched UUID, otherwise return null
+    if (match) {
+      window.location.href = "/room?id=" + match[0];
+    } else {
+      alert("invalid code")
+    }
   }
 
   function loadJoinModal() {
