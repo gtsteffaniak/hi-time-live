@@ -25,7 +25,7 @@
     async function createRemoteVideoStream(id) {
         // Create the video element
         const videoElement = document.createElement('video');
-        videoElement.id = id+'-remoteVideo';
+        videoElement.id = id + '-remoteVideo';
         videoElement.className = 'remote-views';
         videoElement.autoplay = true;
         videoElement.muted = true;
@@ -42,17 +42,17 @@
     }
 
     function removeRemoteVideoStream(id) {
-        const videoElement = document.getElementById(id+'-remoteVideo');
+        const videoElement = document.getElementById(id + '-remoteVideo');
         if (videoElement) {
             videoElement.remove(); // Removes the video element from the DOM
         }
+        const videoContainer = document.getElementById('video-container');
         const count = videoContainer.getElementsByTagName('video').length;
-
         if (count <= 0) {
             updateStatusText("Waiting on others to join")
             loadingModal = document.getElementById('loadingModal');
             loadingModal.classList.remove("hidden")
-        } 
+        }
     }
 
     async function waitForCandidates(id) {
@@ -63,7 +63,7 @@
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
             localVideo.srcObject = localStream;
             localStream.getTracks().forEach((track) => pcs[id].addTrack(track, localStream));
-        }       
+        }
         const offer = await pcs[id].createOffer();
         await pcs[id].setLocalDescription(offer);
         for (let i = 0; i < 10; i++) {
@@ -124,10 +124,10 @@
         pcs[id] = await new RTCPeerConnection(configuration);
         await waitForCandidates(id)
         if ('offer' in msg) {
-            console.log("handing with offer ",id)
+            console.log("handing with offer ", id)
             handleOffer(msg)
         } else {
-            console.log("handing without offer ",id)
+            console.log("handing without offer ", id)
             handleCreateOffer(id)
         }
     }
