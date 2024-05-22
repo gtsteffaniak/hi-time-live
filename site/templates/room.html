@@ -17,23 +17,45 @@
 
 <body>
   {{ template "privacyModal" . }}
+  {{ template "safariModal" . }}
   {{ template "loadingModal" . }}
-  {{ template "signaling" . }}
-  {{ template "customScripts" . }}
-  <video id="localVideo" autoplay muted></video>
-
+  <video id="localVideo" autoplay muted playsinline></video>
   <div id="video-container">
   </div>
   <div id="controls" class="hidden">
-    <div>
-      <button id="switchButton" class="settings" onclick="switchMedia()">Switch
-        Camera</button>
-      <button id="muteButton" class="settings" onclick="toggleMute()">Unmuted</button>
-      <button id="vidButton" class="settings" onclick="toggleVid()">Video Enabled</button>
-      <button id="hangupButton" >Hang Up</button>
-    </div>
+      <div id="switchButton" class="button padded-right" onclick="switchMedia()"><span class="material-symbols-outlined">
+        cameraswitch
+        </span></div>
+      <div id="muteButton" class="button padded-right" onclick="toggleMute()">Mute</div>
+      <div id="vidButton" class="button padded-right" onclick="toggleVid()">Disable Video</div>
+      <a class="button" href="/" > Leave <span style="margin-left: 4px"class="material-symbols-outlined">
+        exit_to_app
+        </span></a>
   </div>
 
 </body>
 
+{{ template "signaling" . }}
+{{ template "customScripts" . }}
+{{ template "videoControls" . }}
+<script>
+  function isSafari() {
+    var ua = navigator.userAgent.toLowerCase();
+    return ua.indexOf('safari') != -1 && ua.indexOf('chrome') == -1 && ua.indexOf('android') == -1;
+  }
+
+  function safariContinue() {
+    const privacyModal = document.getElementById('privacyModal');
+    privacyModal.classList.remove("hidden")
+    let modal = document.getElementById('safariModal');
+    modal.classList.add("hidden")
+  }
+
+  if (isSafari()) {
+    let modal = document.getElementById('safariModal');
+    modal.classList.remove("hidden")
+    const privacyModal = document.getElementById('privacyModal');
+    privacyModal.classList.add("hidden")
+  }
+</script>
 </html>

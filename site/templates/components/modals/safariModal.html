@@ -1,0 +1,19 @@
+{{ define "safariModal" }}
+<div id="safariModal" class="modal hidden">
+  <article class="modal-container animated-border-box">
+    <header class="modal-container-header">
+      <h1 class="modal-container-title">
+        Safari Warning
+      </h1>
+    </header>
+    <section class="modal-container-body rtf centered">
+      <p>Safari has been tested and often does not work. You can proceed, but the video feed may not work. Please use Chrome, Firefox, Edge another browser.</p>
+    </section>
+    <footer class="modal-container-footer">
+      <a href="/" class="button is-ghost">Back</a>
+      <button onclick="safariContinue()" class="button is-primary start">Let me try anyways</button>
+    </footer>
+  </article>
+</div>
+
+{{ end }}

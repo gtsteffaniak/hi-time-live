@@ -246,14 +246,16 @@
     }
 
     .button {
-        padding: 12px 20px;
-        border-radius: 8px;
+        text-decoration: none;
+        padding: 1em;
+        border-radius: 1em;
         background-color: #2d232e;
         color: lightgray;
         border: 0;
         font-weight: 600;
         cursor: pointer;
         transition: 0.15s ease;
+        display: flex;
 
         &.is-ghost {
 
@@ -271,6 +273,10 @@
                 background-color: #4a0433;
             }
         }
+    }
+
+    .padded-right {
+        margin-right: 1em;
     }
 
     .icon-button {
