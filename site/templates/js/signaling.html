@@ -10,6 +10,12 @@
 
     let ws;
     let localStream;
+    const videoConstraints = {
+        audio: true,
+        video: {
+            facingMode: { ideal: 'user' }
+        }
+    }
     const allowedCodecs = ['VP9', 'H264'];
     const configuration = {
         'iceServers': [
@@ -138,10 +144,12 @@
         createRemoteVideoStream(id)
         localVideo = document.getElementById('localVideo');
         if (localVideo.srcObject) {
-            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+            localStream = await navigator.mediaDevices.getUserMedia(videoConstraints);
             localVideo.srcObject = localStream;
             localStream.getTracks().forEach((track) => pcs[id].addTrack(track, localStream));
+
         }
+
         let offer = await pcs[id].createOffer();
         const filteredSDP = filterCodecs(offer.sdp, allowedCodecs);
         offer.sdp = filteredSDP;
@@ -232,7 +240,6 @@
                 code: "{{ .code }}",
             }
             ws.json(msg);
-            document.querySelector('.cube.second').style.setProperty('--uib-color', 'green');
             updateStatusText("Waiting on Confirmation")
         }
         ws.onmessage = function (evt) {
@@ -247,8 +254,8 @@
                 newWebRTC(msg.userId)
                 break
             case "acknowledge":
+                startLoading(33, 100);
                 updateStatusText("Waiting on others to join")
-                document.querySelector('.cube.third').style.setProperty('--uib-color', 'green');
                 break
             case "newOffer":
                 console.log("newOffer:", msg.userId)
@@ -262,8 +269,10 @@
 
     async function startLocalVideo() {
         localVideo = document.getElementById('localVideo');
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        localStream = await navigator.mediaDevices.getUserMedia(videoConstraints);
         localVideo.srcObject = localStream;
+        const controls = document.getElementById('controls')
+        controls.classList.remove("hidden")
         startwebsocket()
     }
 

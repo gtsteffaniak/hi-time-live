@@ -11,10 +11,8 @@
     loadingModal.classList.remove("hidden")
 
     const videos = document.getElementById('videos');
-    const controls = document.getElementById('controls')
-    //videos.classList.remove("hidden")
-    controls.classList.remove("hidden")
     startLocalVideo()
+    startLoading(0, 33);
   };
 
   function copyToClipboard() {
