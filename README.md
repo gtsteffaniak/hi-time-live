@@ -39,3 +39,15 @@ A deployed version is available at https://hitime.live/.
 you can also deploy your own server using the docker image provided at dockerub with `gtstef/hitime` or building locally.
 
 Note: The features on the frontend require HTTPS connection, so any build should be done behind a HTTPS connection. I have included `generate_cert.go` standard library for quick mock certificate creation for local testing.
+
+## Browser Support
+
+Since the webrtc is a browser-based technology, only certain browsers support it.
+
+While I was happy to see it has broad compatibility across browsers, I found that safari had issues.
+
+![Chrome](https://raw.githubusercontent.com/alrra/browser-logos/master/src/chrome/chrome_48x48.png) | ![Firefox](https://raw.githubusercontent.com/alrra/browser-logos/master/src/firefox/firefox_48x48.png) | ![IE](https://raw.githubusercontent.com/alrra/browser-logos/master/src/edge/edge_48x48.png) | ![Opera](https://raw.githubusercontent.com/alrra/browser-logos/master/src/opera/opera_48x48.png) | ![Safari](https://raw.githubusercontent.com/alrra/browser-logos/master/src/safari/safari_48x48.png) 
+--- | --- | --- | --- | --- |
+ ✅ |  ✅ | ✅ | ✅ | ❌ |
+
+Safari is the only exception, I believe it could work based on the safari version. I used `17.4.1` on macos, the video never shows up on either side. 
