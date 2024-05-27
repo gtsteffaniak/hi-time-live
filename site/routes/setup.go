@@ -136,7 +136,7 @@ func (t *TemplateRenderer) loadTemplates() error {
 func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
 	if t.devMode {
 		if err := t.loadTemplates(); err != nil {
-			slog.Error(err)
+			slog.Error("unable to parse templates", "error", err)
 		}
 	}
 	noCacheHeaders := map[string]string{
