@@ -123,7 +123,6 @@ func (t *TemplateRenderer) loadTemplates() error {
 		}
 		file = strings.TrimPrefix(file, t.templateDir+"/")
 		slog.Debug("processing file: " + file)
-
 		fileContent := string(content)
 		_, err = t.templates.New(file).Parse(fileContent)
 		if err != nil {
@@ -138,7 +137,6 @@ func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c 
 	if t.devMode {
 		t.loadTemplates()
 	}
-
 	noCacheHeaders := map[string]string{
 		"Cache-Control":     "no-cache, private, max-age=0",
 		"Pragma":            "no-cache",
@@ -148,6 +146,5 @@ func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c 
 	for k, v := range noCacheHeaders {
 		c.Response().Header().Set(k, v)
 	}
-
 	return t.templates.ExecuteTemplate(w, name, data)
 }
