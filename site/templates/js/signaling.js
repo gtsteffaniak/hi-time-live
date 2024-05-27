@@ -1,0 +1,311 @@
+/*
+ *  Copyright (c) 2021 The WebRTC project authors. All Rights Reserved.
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree.
+ */
+
+let ws;
+let localStream;
+const videoConstraints = {
+    audio: true,
+    video: {
+        facingMode: { ideal: 'user' }
+    }
+}
+const allowedCodecs = ['VP9', 'H264'];
+const configuration = {
+    'iceServers': [
+        { 'urls': 'stun:stun.l.google.com:19302' },
+        { 'urls': 'stun:stun1.l.google.com:19302' },
+        { 'urls': 'stun:stun2.l.google.com:19302' },
+        { 'urls': 'stun:stun3.l.google.com:19302' },
+        { 'urls': 'stun:stun4.l.google.com:19302' },
+        { 'urls': 'stun:stun.ekiga.net' },
+        { 'urls': 'stun:stun.ideasip.com' },
+        { 'urls': 'stun:stun.stunprotocol.org:3478' },
+        { 'urls': 'stun:stun.voiparound.com' },
+        { 'urls': 'stun:stun.voipbuster.com' },
+        { 'urls': 'stun:stun.voipstunt.com' },
+    ]
+};
+const userId = crypto.randomUUID().split("-")[0];
+let pcs = {}
+const localCandidates = [];
+let localVideo = document.getElementById('localVideo');
+
+console.log("local connection id:", userId)
+
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function createRemoteVideoStream(id) {
+    // Create the video element
+    const videoElement = document.createElement('video');
+    videoElement.id = id + '-remoteVideo';
+    videoElement.className = 'remote-views';
+    videoElement.autoplay = true;
+    videoElement.muted = true;
+    videoElement.playsinline = true;
+
+    // Append the video element to the container
+    const videoContainer = document.getElementById('video-container');
+    videoContainer.appendChild(videoElement);
+    pcs[id].ontrack = (event) => {
+        let remoteVideo = document.getElementById(videoElement.id);
+        if (remoteVideo.srcObject) return;
+        console.log("attaching remote view")
+        remoteVideo.srcObject = event.streams[0];
+    };
+}
+
+function removeRemoteVideoStream(id) {
+    const videoElement = document.getElementById(id + '-remoteVideo');
+    if (videoElement) {
+        videoElement.remove(); // Removes the video element from the DOM
+    }
+    const videoContainer = document.getElementById('video-container');
+    const count = videoContainer.getElementsByTagName('video').length;
+    if (count <= 0) {
+        updateStatusText("Waiting on others to join")
+        loadingModal = document.getElementById('loadingModal');
+        loadingModal.classList.remove("hidden")
+    }
+}
+
+// Function to filter the codecs in the SDP
+function filterCodecs(sdp, allowedCodecs) {
+    const sdpLines = sdp.split('\r\n');
+    let isVideoSection = false;
+    const videoMLineIndex = sdpLines.findIndex(line => line.startsWith('m=video'));
+
+    if (videoMLineIndex === -1) return sdp; // No video section found
+
+    let mLineParts = sdpLines[videoMLineIndex].split(' ');
+    let filteredPayloadTypes = [];
+
+    // Regex to match the allowed codecs
+    const codecRegex = new RegExp(`^a=rtpmap:(\\d+) (${allowedCodecs.join('|')})\\/\\d+`, 'i');
+
+    // Iterate over the SDP lines to find the allowed payload types
+    for (let i = videoMLineIndex + 1; i < sdpLines.length; i++) {
+        if (sdpLines[i].startsWith('m=')) {
+            break; // End of the video section
+        }
+
+        const match = sdpLines[i].match(codecRegex);
+        if (match) {
+            filteredPayloadTypes.push(match[1]); // Capture the payload type
+        }
+    }
+
+    if (filteredPayloadTypes.length === 0) return sdp; // No matching codecs found
+
+    // Update the m= line with the filtered payload types
+    mLineParts = mLineParts.slice(0, 3).concat(filteredPayloadTypes);
+    sdpLines[videoMLineIndex] = mLineParts.join(' ');
+
+    // Filter out irrelevant lines
+    const filteredSdpLines = sdpLines.filter(line => {
+        if (line.startsWith('m=') || line.startsWith('c=') || line.startsWith('a=sendrecv') || line.startsWith('a=recvonly') || line.startsWith('a=sendonly') || line.startsWith('a=inactive')) {
+            return true;
+        }
+
+        const fmtpMatch = line.match(/^a=fmtp:(\d+)/);
+        const rtcpFbMatch = line.match(/^a=rtcp-fb:(\d+)/);
+
+        if (fmtpMatch && filteredPayloadTypes.includes(fmtpMatch[1])) {
+            return true;
+        }
+
+        if (rtcpFbMatch && filteredPayloadTypes.includes(rtcpFbMatch[1])) {
+            return true;
+        }
+
+        if (line.startsWith('a=rtpmap:')) {
+            const parts = line.split(' ');
+            const payloadType = parts[0].split(':')[1];
+            return filteredPayloadTypes.includes(payloadType);
+        }
+
+        return !line.startsWith('a=rtpmap:') && !line.startsWith('a=rtcp-fb:') && !line.startsWith('a=fmtp:');
+    });
+
+    return filteredSdpLines.join('\r\n');
+}
+
+
+async function waitForCandidates(id) {
+    pcs[id].onicecandidate = ({ candidate }) => handleCandidate(candidate);
+    createRemoteVideoStream(id)
+    localVideo = document.getElementById('localVideo');
+    if (localVideo.srcObject) {
+        localStream = await navigator.mediaDevices.getUserMedia(videoConstraints);
+        localVideo.srcObject = localStream;
+        localStream.getTracks().forEach((track) => pcs[id].addTrack(track, localStream));
+
+    }
+
+    let offer = await pcs[id].createOffer();
+    const filteredSDP = filterCodecs(offer.sdp, allowedCodecs);
+    offer.sdp = filteredSDP;
+    await pcs[id].setLocalDescription(offer);
+    statusText = "Gathering network information"
+    updateStatusText(statusText)
+    for (let i = 0; i < 5; i++) {
+        await delay(1000);
+        if (localCandidates.length > 10) {
+            await delay(1000)
+            return
+        }
+        statusText += "."
+        updateStatusText(statusText)
+    }
+}
+
+async function handleOffer(msg) {
+    let id = msg.userId
+    console.log("handling offer", msg.offer)
+    const offerDescription = new RTCSessionDescription({ "type": "offer", "sdp": msg.offer });
+    await pcs[id].setRemoteDescription(offerDescription);
+    handleRemoteCandidates(msg)
+
+    // Create an answer
+    const answer = await pcs[id].createAnswer();
+    const filteredSDP = filterCodecs(answer.sdp, allowedCodecs);
+
+    // Set local description with the answer
+    const responseMessage = {
+        eventType: "answer",
+        userId: userId,
+        forUser: id,
+        answer: filteredSDP,
+        candidates: JSON.stringify(localCandidates),
+        code: "{{ .code }}",
+    }
+    console.log("sending answer", id)
+    // Exchange the answer with the remote peer
+    ws.json(responseMessage)
+    loadingModal = document.getElementById('loadingModal');
+    loadingModal.classList.add("hidden")
+    await pcs[id].setLocalDescription(answer);
+}
+
+async function handleCreateOffer(id) {
+    updateStatusText("Attempting to connect to new user")
+    let myoffer = await pcs[id].createOffer();
+    myoffer.sdp = filterCodecs(myoffer.sdp, allowedCodecs);;
+    await pcs[id].setLocalDescription(myoffer);
+    // Set local description with the answer
+    const responseMessage = {
+        eventType: "newOffer",
+        userId: userId,
+        offer: myoffer.sdp,
+        candidates: JSON.stringify(localCandidates),
+        code: "{{ .code }}",
+    }
+    console.log("sending offer to ", id)
+    // Exchange the answer with the remote peer
+    ws.json(responseMessage)
+}
+
+async function newWebRTC(id, msg = {}) {
+    if (pcs[id]) {
+        pcs[id] = null
+    }
+    pcs[id] = await new RTCPeerConnection(configuration);
+    await waitForCandidates(id)
+    if ('offer' in msg) {
+        console.log("handing with offer ", id)
+        handleOffer(msg)
+    } else {
+        console.log("handing without offer ", id)
+        handleCreateOffer(id)
+    }
+}
+
+function startwebsocket() {
+    var loc = window.location;
+    uri = 'wss://' + loc.host + '/ws';
+    ws = new WebSocket(uri)
+    ws.json = (obj) => ws.send(JSON.stringify(obj));
+    ws.onopen = function () {
+        const msg = {
+            eventType: "newUser",
+            userId: userId,
+            code: "{{ .code }}",
+        }
+        ws.json(msg);
+        updateStatusText("Waiting on Confirmation")
+    }
+    ws.onmessage = function (evt) {
+        const msg = JSON.parse(evt.data)
+        eventRouter(msg)
+    }
+}
+
+async function eventRouter(msg) {
+    switch (msg.eventType) {
+        case "newUser":
+            newWebRTC(msg.userId)
+            break
+        case "acknowledge":
+            startLoading(33, 100);
+            updateStatusText("Waiting on others to join")
+            break
+        case "newOffer":
+            console.log("newOffer:", msg.userId)
+            newWebRTC(msg.userId, msg)
+            break
+        case "removedUser": handleClose(msg); break
+        case "answer": handleAnswer(msg); break
+        default: console.log("something happened but don't know what", msg); break
+    }
+}
+
+async function startLocalVideo() {
+    localVideo = document.getElementById('localVideo');
+    localStream = await navigator.mediaDevices.getUserMedia(videoConstraints);
+    localVideo.srcObject = localStream;
+    const controls = document.getElementById('controls')
+    controls.classList.remove("hidden")
+    startwebsocket()
+}
+
+async function handleClose(msg) {
+    if (pcs[msg.userId]) {
+        pcs[msg.userId].close();
+        pcs[msg.userId] = null;
+    }
+    removeRemoteVideoStream(msg.userId)
+    console.log("closed video of peer")
+}
+
+async function handleAnswer(msg) {
+    console.log(msg.userId, "handling answer", msg.answer)
+    await pcs[msg.userId].setRemoteDescription({ "type": "answer", "sdp": msg.answer });
+    handleRemoteCandidates(msg)
+
+    loadingModal = document.getElementById('loadingModal');
+    loadingModal.classList.add("hidden")
+    console.log("done handling answer")
+}
+
+async function handleRemoteCandidates(message) {
+    let candidates = JSON.parse(message.candidates)
+    console.log("candidates from", message.userId)
+
+    for (c in candidates) {
+        await pcs[message["userId"]].addIceCandidate(candidates[c])
+    }
+}
+
+async function handleCandidate(candidate) {
+    if (candidate != null) {
+        console.log("new candidate")
+        localCandidates.push(candidate)
+    }
+
+}

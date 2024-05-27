@@ -1,0 +1,43 @@
+#video-container {
+  display: flex;
+  position: fixed;
+  flex-wrap: wrap;
+  flex-direction: row-reverse;
+  justify-content: center;
+  align-items: center;
+  width: inherit;
+  height: inherit;
+}
+
+.remote-views {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+#controls {
+  position: fixed;
+  bottom: 0;
+  display: flex;
+  padding: 1em;
+}
+
+#localVideo:hover {
+  width: 85%;
+  cursor: pointer;
+}
+
+#localVideo {
+  -webkit-transition: width 0.5s ease-in-out;
+  -moz-transition: width 0.5s ease-in-out;
+  -o-transition: width 0.5s ease-in-out;
+  transition: width 0.5s ease-in-out;
+  width: 10em;
+  max-width: 30em;
+  height: auto;
+  width: 25%;
+  right: 0;
+  bottom: 0;
+  margin-bottom: 1em;
+  margin-right: 1em;
+  position: fixed;
+}
