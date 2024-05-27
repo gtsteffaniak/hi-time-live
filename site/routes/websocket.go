@@ -163,7 +163,7 @@ func notifyNewUser(userId string) {
 	defer connLock.Unlock()
 	for _, conn := range connections {
 		if conn.userId != userId {
-			slog.Debug("sending new user notify", conn.id, "userId", userId)
+			slog.Debug("sending new user notify", "connId", conn.id, "userId", userId)
 			_ = conn.sendMessage(map[string]string{
 				"eventType": "newUser",
 				"userId":    userId,
