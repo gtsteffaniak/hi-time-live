@@ -25,14 +25,14 @@ func SetupRoutes(e *echo.Echo, devMode bool, logger slog.Logger) {
 	e.Static("/", "static")
 	setupMiddleware(e, logger)
 	// Register custom template renderer
-	renderer := &TemplateRenderer{
+	t := &TemplateRenderer{
 		templateDir: "templates",
 		devMode:     devMode,
 	}
-	if err := renderer.loadTemplates(); err != nil {
+	if err := t.loadTemplates(); err != nil {
 		e.Logger.Fatal(err)
 	}
-	e.Renderer = renderer
+	e.Renderer = t
 	e.GET("/", indexHandler)
 	e.GET("/room", roomHandler)
 	e.GET("/ws", wsHandler)
@@ -135,7 +135,9 @@ func (t *TemplateRenderer) loadTemplates() error {
 // Render renders a template document
 func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
 	if t.devMode {
-		t.loadTemplates()
+		if err := t.loadTemplates(); err != nil {
+			slog.Error(err)
+		}
 	}
 	noCacheHeaders := map[string]string{
 		"Cache-Control":     "no-cache, private, max-age=0",
