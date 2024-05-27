@@ -9,7 +9,7 @@ setup:
 	mv *.pem ./site/
 
 run:
-	cd site && go run .
+	cd site && go run . --dev
 
 test:
 	cd site && go test -v --race ./...

@@ -1,9 +1,10 @@
 package routes
 
 import (
-	"fmt"
+	"context"
 	"html/template"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,14 +18,16 @@ import (
 type TemplateRenderer struct {
 	templateDir string
 	templates   *template.Template
+	devMode     bool
 }
 
-func SetupRoutes(e *echo.Echo) {
+func SetupRoutes(e *echo.Echo, devMode bool, logger slog.Logger) {
 	e.Static("/", "static")
-	setupMiddleware(e)
+	setupMiddleware(e, logger)
 	// Register custom template renderer
 	renderer := &TemplateRenderer{
 		templateDir: "templates",
+		devMode:     devMode,
 	}
 	if err := renderer.loadTemplates(); err != nil {
 		e.Logger.Fatal(err)
@@ -35,11 +38,30 @@ func SetupRoutes(e *echo.Echo) {
 	e.GET("/ws", wsHandler)
 }
 
-func setupMiddleware(e *echo.Echo) {
-	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-		CustomTimeFormat: "2006-01-02 15:04:05.00",
-		Format:           "[HTTP] ${time_custom} | ${status} | ${remote_ip} :${referrer} | ${method} | ${latency_human}  | \"${uri}\"\n",
-		Output:           e.Logger.Output(),
+func setupMiddleware(e *echo.Echo, logger slog.Logger) {
+	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		LogStatus:   true,
+		LogURI:      true,
+		LogError:    true,
+		HandleError: true, // forwards error to the global error handler
+		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+			level := slog.LevelInfo
+			errMessage := ""
+			if v.Error != nil {
+				level = slog.LevelError
+				errMessage = v.Error.Error()
+			}
+			logger.LogAttrs(context.Background(), level, "REQUEST",
+				slog.Int("status", v.Status),
+				slog.String("ip", v.RemoteIP),
+				slog.String("referrer", v.Referer),
+				slog.String("method", v.Method),
+				slog.String("latency", v.Latency.String()),
+				slog.String("uri", v.URI),
+				slog.String("error", errMessage),
+			)
+			return nil
+		},
 	}))
 	e.Use(middleware.Secure())
 	e.Use(middleware.Recover())
@@ -97,10 +119,11 @@ func (t *TemplateRenderer) loadTemplates() error {
 		// Read the file content
 		content, err := os.ReadFile(file)
 		if err != nil {
-			return fmt.Errorf("error reading file: %w", err)
+			return err
 		}
 		file = strings.TrimPrefix(file, t.templateDir+"/")
-		fmt.Println("processing ", file)
+		slog.Debug("processing file: " + file)
+
 		fileContent := string(content)
 		_, err = t.templates.New(file).Parse(fileContent)
 		if err != nil {
@@ -112,6 +135,10 @@ func (t *TemplateRenderer) loadTemplates() error {
 
 // Render renders a template document
 func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
+	if t.devMode {
+		t.loadTemplates()
+	}
+
 	noCacheHeaders := map[string]string{
 		"Cache-Control":     "no-cache, private, max-age=0",
 		"Pragma":            "no-cache",

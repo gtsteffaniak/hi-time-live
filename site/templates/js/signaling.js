@@ -238,7 +238,7 @@ function startwebsocket() {
             code: "{{ .code }}",
         }
         ws.json(msg);
-        updateStatusText("Waiting on Confirmation")
+        updateStatusText("Waiting for connection")
     }
     ws.onmessage = function (evt) {
         const msg = JSON.parse(evt.data)
