@@ -28,7 +28,6 @@ jobs:
           draft: false
           generate_release_notes: true
           name: ${{ steps.extract_branch.outputs.branch }}
-          body: "new release" # todo: add changelog
 
   test:
     runs-on: ubuntu-latest
