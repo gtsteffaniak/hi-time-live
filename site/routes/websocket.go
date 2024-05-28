@@ -2,8 +2,7 @@ package routes
 
 import (
 	"encoding/json"
-	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/google/uuid"
@@ -13,9 +12,8 @@ import (
 
 type connection struct {
 	ws     *websocket.Conn
-	id     string
-	roomId string
 	userId string
+	roomId string
 }
 
 var connections = make(map[string]connection)
@@ -28,10 +26,10 @@ func (conn connection) close() {
 		room := getRoom(conn.roomId)
 		userId := conn.userId
 		room.removeUserFromRoom(userId)
-		delete(connections, conn.id)
+		delete(connections, conn.userId)
 		connLock.Unlock()
 		notifyClosedConnection(userId)
-		fmt.Println("Deleted " + userId)
+		slog.Debug("Deleted " + userId)
 	}()
 }
 
@@ -50,8 +48,8 @@ func wsHandler(c echo.Context) error {
 	websocket.Handler(func(ws *websocket.Conn) {
 		connId := uuid.New().String()
 		newConnection := connection{
-			id: connId,
-			ws: ws,
+			userId: connId, // temporary id
+			ws:     ws,
 		}
 		defer func() {
 			newConnection.close()
@@ -61,20 +59,19 @@ func wsHandler(c echo.Context) error {
 			msg := ""
 			err := websocket.Message.Receive(ws, &msg)
 			if err != nil {
-				fmt.Println("error opening ws ", err)
+				slog.Error("Incoming websocket failed ", "connId", connId, "error", err)
 				return
 			}
 			var message map[string]string
 			err = json.Unmarshal([]byte(msg), &message)
 			if err != nil {
-				fmt.Println("error for ", connId)
-				fmt.Println(err)
+				slog.Error("Unable to handle message", "connId", connId, "error", err)
 				continue
 			}
 			newConnection.userId = message["userId"]
 			newConnection.roomId = message["code"]
 			connLock.Lock()
-			connections[connId] = newConnection
+			connections[newConnection.userId] = newConnection
 			connLock.Unlock()
 			newConnection.eventRouter(message)
 		}
@@ -85,23 +82,23 @@ func wsHandler(c echo.Context) error {
 func (conn connection) eventRouter(message map[string]string) {
 	switch eventType := message["eventType"]; eventType {
 	case "newUser":
-		fmt.Println("newUser :", conn.userId)
+		slog.Debug("newUser :" + conn.userId)
 		conn.doNewUserStuff(message)
 	case "newOffer":
-		fmt.Println("newOffer " + conn.userId)
+		slog.Debug("newOffer " + conn.userId)
 		notifyNewOffer(message)
 	case "answer":
-		fmt.Println("answer " + conn.userId)
+		slog.Debug("answer " + conn.userId)
 		notifyNewAnswer(message)
 	default:
-		fmt.Println("defaulting")
+		slog.Debug("defaulting")
 	}
 }
 
 func (conn connection) sendMessage(message map[string]string) error {
 	jsonData, err := json.Marshal(message)
 	if err != nil {
-		return fmt.Errorf("new error %s", err)
+		return err
 	}
 	err = websocket.Message.Send(conn.ws, string(jsonData))
 	if err != nil {
@@ -115,7 +112,7 @@ func notifyNewOffer(message map[string]string) {
 	defer connLock.Unlock()
 	for _, conn := range connections {
 		if conn.userId != message["userId"] {
-			fmt.Println("notifyNewOffer " + conn.userId)
+			slog.Debug("notifyNewOffer ", "connId", conn.userId)
 			_ = conn.sendMessage(map[string]string{
 				"eventType":  "newOffer",
 				"userId":     message["userId"],
@@ -133,7 +130,7 @@ func notifyNewAnswer(message map[string]string) {
 		if conn.userId != message["forUser"] {
 			continue
 		}
-		fmt.Println("new answer notify " + conn.userId)
+		slog.Debug("new answer notify ", "connId", conn.userId)
 		_ = conn.sendMessage(map[string]string{
 			"eventType":  "answer",
 			"userId":     message["userId"],
@@ -148,7 +145,7 @@ func (conn connection) doNewUserStuff(message map[string]string) {
 	var err error
 	numUsers, err := attemptJoin(message["code"], userId)
 	if err != nil {
-		fmt.Println(err)
+		slog.Error("attempt join", "error", err)
 		return
 	}
 	_ = conn.sendMessage(map[string]string{
@@ -157,7 +154,7 @@ func (conn connection) doNewUserStuff(message map[string]string) {
 	if numUsers > 1 {
 		notifyNewUser(userId)
 	}
-	log.Println("new user added : ", userId)
+	slog.Debug("new user added", "connId", conn.userId)
 }
 
 func notifyNewUser(userId string) {
@@ -165,7 +162,7 @@ func notifyNewUser(userId string) {
 	defer connLock.Unlock()
 	for _, conn := range connections {
 		if conn.userId != userId {
-			fmt.Println("sending new user notify: ", conn.userId)
+			slog.Debug("sending new user notify", "connId", conn.userId)
 			_ = conn.sendMessage(map[string]string{
 				"eventType": "newUser",
 				"userId":    userId,

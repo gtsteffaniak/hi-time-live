@@ -1,10 +1,13 @@
 package routes
 
 import (
+	"context"
+	"html/template"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
-	"text/template"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -14,48 +17,71 @@ import (
 // TemplateRenderer is a custom html/template renderer for Echo framework
 type TemplateRenderer struct {
 	templateDir string
+	templates   *template.Template
+	devMode     bool
 }
 
-func SetupRoutes(e *echo.Echo) {
+func SetupRoutes(e *echo.Echo, devMode bool, logger slog.Logger) {
 	e.Static("/", "static")
-	setupMiddleware(e)
+	setupMiddleware(e, logger)
 	// Register custom template renderer
-	renderer := &TemplateRenderer{
+	t := &TemplateRenderer{
 		templateDir: "templates",
+		devMode:     devMode,
 	}
-	e.Renderer = renderer
+	if err := t.loadTemplates(); err != nil {
+		e.Logger.Fatal(err)
+	}
+	e.Renderer = t
 	e.GET("/", indexHandler)
 	e.GET("/room", roomHandler)
 	e.GET("/ws", wsHandler)
 }
 
-func setupMiddleware(e *echo.Echo) {
-	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-		CustomTimeFormat: "2006-01-02 15:04:05.00",
-		Format:           "[HTTP] ${time_custom} | ${status} | ${remote_ip} :${referrer} | ${method} | ${latency_human}  | \"${uri}\"\n",
-		Output:           e.Logger.Output(),
+func setupMiddleware(e *echo.Echo, logger slog.Logger) {
+	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		LogStatus:   true,
+		LogURI:      true,
+		LogError:    true,
+		HandleError: true, // forwards error to the global error handler
+		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+			level := slog.LevelInfo
+			errMessage := ""
+			if v.Error != nil {
+				level = slog.LevelError
+				errMessage = v.Error.Error()
+			}
+			logger.LogAttrs(context.Background(), level, "REQUEST",
+				slog.Int("status", v.Status),
+				slog.String("ip", v.RemoteIP),
+				slog.String("referrer", v.Referer),
+				slog.String("method", v.Method),
+				slog.String("latency", v.Latency.String()),
+				slog.String("uri", v.URI),
+				slog.String("error", errMessage),
+			)
+			return nil
+		},
 	}))
 	e.Use(middleware.Secure())
 	e.Use(middleware.Recover())
 }
 
-func FindHTMLFiles(rootPath string) ([]string, error) {
-	var htmlFiles []string
+func FindFiles(rootPath string) ([]string, error) {
+	var files []string
 	err := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-
-		if !info.IsDir() && filepath.Ext(path) == ".html" {
-			htmlFiles = append(htmlFiles, path)
+		if !info.IsDir() {
+			files = append(files, path)
 		}
-
 		return nil
 	})
-
-	return htmlFiles, err
+	return files, err
 }
-func indexHandler(e echo.Context) error {
+
+func indexHandler(c echo.Context) error {
 	data := map[string]interface{}{}
 	id := uuid.New().String()
 	data["code"] = id
@@ -64,11 +90,11 @@ func indexHandler(e echo.Context) error {
 		"hidden":    "hidden",
 		"code":      id,
 	}
-	return e.Render(200, "main.html", data)
+	return c.Render(200, "main.html", data)
 }
 
-func roomHandler(e echo.Context) error {
-	id := e.QueryParam("id")
+func roomHandler(c echo.Context) error {
+	id := c.QueryParam("id")
 	data := map[string]interface{}{}
 	data["code"] = id
 	data["privacyModal"] = map[string]string{
@@ -77,25 +103,42 @@ func roomHandler(e echo.Context) error {
 		"code":      id,
 	}
 	if !validCode(id) {
-		return e.Render(200, "invalidRoom.html", data)
+		return c.Render(200, "invalidRoom.html", data)
 	} else {
-		return e.Render(200, "room.html", data)
+		return c.Render(200, "room.html", data)
 	}
+}
+
+func (t *TemplateRenderer) loadTemplates() error {
+	tempfiles, err := FindFiles(t.templateDir)
+	if err != nil {
+		return err
+	}
+	t.templates = template.New("")
+	for _, file := range tempfiles {
+		// Read the file content
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return err
+		}
+		file = strings.TrimPrefix(file, t.templateDir+"/")
+		slog.Debug("processing file: " + file)
+		fileContent := string(content)
+		_, err = t.templates.New(file).Parse(fileContent)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Render renders a template document
 func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
-
-	tempfiles, err := FindHTMLFiles(t.templateDir)
-	if err != nil {
-		return err
+	if t.devMode {
+		if err := t.loadTemplates(); err != nil {
+			slog.Error("unable to parse templates", "error", err)
+		}
 	}
-
-	tmpl, err := template.ParseFiles(tempfiles...)
-	if err != nil {
-		return err
-	}
-
 	noCacheHeaders := map[string]string{
 		"Cache-Control":     "no-cache, private, max-age=0",
 		"Pragma":            "no-cache",
@@ -105,5 +148,5 @@ func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c 
 	for k, v := range noCacheHeaders {
 		c.Response().Header().Set(k, v)
 	}
-	return tmpl.ExecuteTemplate(w, name, data)
+	return t.templates.ExecuteTemplate(w, name, data)
 }
