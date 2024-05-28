@@ -10,35 +10,45 @@
   <meta name="theme-color" content="#7d0e9e">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" />
-  {{ template "baseStyle" }}
-  {{ template "roomStyle" }}
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" >
+  <style>
+  {{ template "css/baseStyle.css" }}
+  {{ template "css/roomStyle.css" }}
+  </style>
+
 </head>
 
 <body>
-  {{ template "privacyModal" . }}
-  {{ template "safariModal" . }}
-  {{ template "loadingModal" . }}
+  {{ template "components/modals/privacyModal.html" . }}
+  {{ template "components/modals/safariModal.html" . }}
+  {{ template "components/modals/loadingModal.html" . }}
   <video id="localVideo" autoplay muted playsinline></video>
   <div id="video-container">
   </div>
-  <div id="controls" class="hidden">
-      <div id="switchButton" class="button padded-right" onclick="switchMedia()"><span class="material-symbols-outlined">
-        cameraswitch
+    <div id="controls" class="hidden">
+      <div id="ctab" onclick="showControls()" class="button"><span class="material-symbols-outlined">keyboard_arrow_up</span></div>
+      <div class="control-options">
+        <div id="switchButton" class="button padded-right" onclick="switchMedia()"><span class="material-symbols-outlined">
+          cameraswitch
         </span></div>
       <div id="muteButton" class="button padded-right" onclick="toggleMute()">Mute</div>
       <div id="vidButton" class="button padded-right" onclick="toggleVid()">Disable Video</div>
-      <a class="button" href="/" > Leave <span style="margin-left: 4px"class="material-symbols-outlined">
-        exit_to_app
-        </span></a>
-  </div>
-
+      <a class="button" href="/">
+        Leave 
+        <span style="margin-left: 4px" class="material-symbols-outlined">
+          exit_to_app
+        </span>
+      </a>
+      </div>
+    </div>
 </body>
 
-{{ template "signaling" . }}
-{{ template "customScripts" . }}
-{{ template "videoControls" . }}
+</html>
+
 <script>
+  {{ template "js/signaling.js". }}
+  {{ template "js/customScripts.js". }}
+  {{ template "js/videoControls.js". }}
   function isSafari() {
     var ua = navigator.userAgent.toLowerCase();
     return ua.indexOf('safari') != -1 && ua.indexOf('chrome') == -1 && ua.indexOf('android') == -1;
@@ -58,4 +68,3 @@
     privacyModal.classList.add("hidden")
   }
 </script>
-</html>
