@@ -30,6 +30,17 @@ jobs:
           body: "New release"
           draft: false
           prerelease: false
+     - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ steps.extract_branch.outputs.branch }}
+          prerelease: false
+          draft: false
+          files: bin/*
+          generate_release_notes: true
+          name: ${{ needs.changelog.outputs.tag }}
+          body: "new release" # todo: add changelog
   test:
     runs-on: ubuntu-latest
     steps:
