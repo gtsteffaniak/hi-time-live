@@ -12,9 +12,8 @@ import (
 
 type connection struct {
 	ws     *websocket.Conn
-	id     string
-	roomId string
 	userId string
+	roomId string
 }
 
 var connections = make(map[string]connection)
@@ -27,7 +26,7 @@ func (conn connection) close() {
 		room := getRoom(conn.roomId)
 		userId := conn.userId
 		room.removeUserFromRoom(userId)
-		delete(connections, conn.id)
+		delete(connections, conn.userId)
 		connLock.Unlock()
 		notifyClosedConnection(userId)
 		slog.Debug("Deleted " + userId)
@@ -49,8 +48,8 @@ func wsHandler(c echo.Context) error {
 	websocket.Handler(func(ws *websocket.Conn) {
 		connId := uuid.New().String()
 		newConnection := connection{
-			id: connId,
-			ws: ws,
+			userId: connId, // temporary id
+			ws:     ws,
 		}
 		defer func() {
 			newConnection.close()
@@ -72,7 +71,7 @@ func wsHandler(c echo.Context) error {
 			newConnection.userId = message["userId"]
 			newConnection.roomId = message["code"]
 			connLock.Lock()
-			connections[connId] = newConnection
+			connections[newConnection.userId] = newConnection
 			connLock.Unlock()
 			newConnection.eventRouter(message)
 		}
@@ -113,7 +112,7 @@ func notifyNewOffer(message map[string]string) {
 	defer connLock.Unlock()
 	for _, conn := range connections {
 		if conn.userId != message["userId"] {
-			slog.Debug("notifyNewOffer ", "connId", conn.id, "userId", conn.userId)
+			slog.Debug("notifyNewOffer ", "connId", conn.userId)
 			_ = conn.sendMessage(map[string]string{
 				"eventType":  "newOffer",
 				"userId":     message["userId"],
@@ -131,7 +130,7 @@ func notifyNewAnswer(message map[string]string) {
 		if conn.userId != message["forUser"] {
 			continue
 		}
-		slog.Debug("new answer notify ", "connId", conn.id, "userId", conn.userId)
+		slog.Debug("new answer notify ", "connId", conn.userId)
 		_ = conn.sendMessage(map[string]string{
 			"eventType":  "answer",
 			"userId":     message["userId"],
@@ -155,7 +154,7 @@ func (conn connection) doNewUserStuff(message map[string]string) {
 	if numUsers > 1 {
 		notifyNewUser(userId)
 	}
-	slog.Debug("new user added", "connId", conn.id, "userId", userId)
+	slog.Debug("new user added", "connId", conn.userId)
 }
 
 func notifyNewUser(userId string) {
@@ -163,7 +162,7 @@ func notifyNewUser(userId string) {
 	defer connLock.Unlock()
 	for _, conn := range connections {
 		if conn.userId != userId {
-			slog.Debug("sending new user notify", "connId", conn.id, "userId", userId)
+			slog.Debug("sending new user notify", "connId", conn.userId)
 			_ = conn.sendMessage(map[string]string{
 				"eventType": "newUser",
 				"userId":    userId,

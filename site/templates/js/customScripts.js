@@ -51,3 +51,10 @@ function updateStatusText(message) {
   let status = document.getElementById('status-text');
   status.innerText = message
 }
+
+function showControls() {
+  const ctab = document.getElementById('ctab');
+  const controls = document.getElementById('controls');
+  controls.classList.toggle("fly-in")
+  ctab.classList.toggle("fly-in")
+}

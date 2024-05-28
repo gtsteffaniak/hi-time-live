@@ -42,36 +42,45 @@ function delay(ms) {
 }
 
 async function createRemoteVideoStream(id) {
+    // Create the container div element
+    const containerDiv = document.createElement('div');
+    containerDiv.id = id + '-container';
+    containerDiv.classList.add("remote-views")
+
     // Create the video element
     const videoElement = document.createElement('video');
     videoElement.id = id + '-remoteVideo';
-    videoElement.className = 'remote-views';
     videoElement.autoplay = true;
     videoElement.muted = true;
     videoElement.playsinline = true;
 
-    // Append the video element to the container
+    // Append the video element to the container div
+    containerDiv.appendChild(videoElement);
+
+    // Append the container div to the main video container
     const videoContainer = document.getElementById('video-container');
-    videoContainer.appendChild(videoElement);
+    videoContainer.appendChild(containerDiv);
+
+    // Set the ontrack event handler for the peer connection
     pcs[id].ontrack = (event) => {
         let remoteVideo = document.getElementById(videoElement.id);
         if (remoteVideo.srcObject) return;
-        console.log("attaching remote view")
+        console.log("attaching remote view");
         remoteVideo.srcObject = event.streams[0];
     };
 }
 
 function removeRemoteVideoStream(id) {
-    const videoElement = document.getElementById(id + '-remoteVideo');
-    if (videoElement) {
-        videoElement.remove(); // Removes the video element from the DOM
+    const containerDiv = document.getElementById(id + '-container');
+    if (containerDiv) {
+        containerDiv.remove(); // Removes the container div from the DOM
     }
     const videoContainer = document.getElementById('video-container');
     const count = videoContainer.getElementsByTagName('video').length;
     if (count <= 0) {
-        updateStatusText("Waiting on others to join")
-        loadingModal = document.getElementById('loadingModal');
-        loadingModal.classList.remove("hidden")
+        updateStatusText("Waiting on others to join");
+        const loadingModal = document.getElementById('loadingModal');
+        loadingModal.classList.remove("hidden");
     }
 }
 
