@@ -20,7 +20,7 @@ jobs:
         run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
         id: extract_branch
       - name: Create Release
-        uses: softprops/action-gh-release@v
+        uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ steps.extract_branch.outputs.branch }}
