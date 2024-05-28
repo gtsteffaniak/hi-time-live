@@ -22,6 +22,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          asset: merge
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ steps.extract_branch.outputs.branch }}
           prerelease: false
