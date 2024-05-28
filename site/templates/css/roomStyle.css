@@ -1,0 +1,83 @@
+#video-container {
+  display: flex;
+  position: fixed;
+  flex-wrap: wrap;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  width: inherit;
+  height: inherit;
+  max-height: height 100%;
+  overflow-y: auto;
+}
+
+.remote-views {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+video {
+  width: 100%;
+}
+
+#controls {
+  z-index: 4;
+  position: fixed;
+  bottom: 0em;
+  display: flex;
+  flex-direction: column;
+  padding: 1em;
+  align-items: center;
+  width: 100%;
+  transition: 0.5s;
+}
+
+@media only screen and (max-width: 800px) {
+  #controls {
+    bottom: -6em;
+  }
+  #ctab {
+    display: flex !important;
+  }
+}
+
+#ctab {
+  display: none;
+  transition: 0.6s;
+}
+
+.fly-in {
+  bottom: 0em !important;
+}
+
+#ctab.fly-in {
+  transform: rotate(180deg);
+}
+
+.control-options {
+  padding-top: 2em;
+  display: flex;
+  flex-direction: row;
+}
+
+#localVideo:hover {
+  width: 85%;
+  cursor: pointer;
+}
+
+#localVideo {
+  -webkit-transition: width 0.5s ease-in-out;
+  -moz-transition: width 0.5s ease-in-out;
+  -o-transition: width 0.5s ease-in-out;
+  transition: width 0.5s ease-in-out;
+  width: 10em;
+  max-width: 30em;
+  height: auto;
+  width: 25%;
+  right: 0;
+  bottom: 0;
+  margin-bottom: 1em;
+  margin-right: 1em;
+  position: fixed;
+  z-index: 3;
+}
