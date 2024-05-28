@@ -26,9 +26,8 @@ jobs:
           tag_name: ${{ steps.extract_branch.outputs.branch }}
           prerelease: false
           draft: false
-          files: bin/*
           generate_release_notes: true
-          name: ${{ needs.changelog.outputs.tag }}
+          name: ${{ steps.extract_branch.outputs.branch }}
           body: "new release" # todo: add changelog
 
   test:
