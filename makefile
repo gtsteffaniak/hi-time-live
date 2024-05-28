@@ -1,7 +1,10 @@
 
-build:
+build-docker:
 	cd site && go mod vendor && cd .. && \
 	docker build -t hi-time-live .
+
+run-docker:
+	docker run -p 9012:9012 hi-time-live
 
 # first run : export GOROOT=$(go env GOROOT)
 setup:
