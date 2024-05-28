@@ -20,18 +20,7 @@ jobs:
         run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
         id: extract_branch
       - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.extract_branch.outputs.branch }}
-          release_name: ${{ steps.extract_branch.outputs.branch }}
-          body: "New release"
-          draft: false
-          prerelease: false
-     - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ steps.extract_branch.outputs.branch }}
@@ -41,6 +30,7 @@ jobs:
           generate_release_notes: true
           name: ${{ needs.changelog.outputs.tag }}
           body: "new release" # todo: add changelog
+
   test:
     runs-on: ubuntu-latest
     steps:
