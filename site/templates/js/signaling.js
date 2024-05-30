@@ -68,6 +68,37 @@ async function createRemoteVideoStream(id) {
         console.log("attaching remote view");
         remoteVideo.srcObject = event.streams[0];
     };
+    updateContainerClass();
+}
+
+
+function updateContainerClass() {
+    const videoContainer = document.getElementById('video-container');
+    const childrenCount = videoContainer.children.length;
+
+    // Remove existing classes
+    videoContainer.classList.remove('single', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine');
+
+    // Add appropriate class
+    if (childrenCount === 1) {
+        videoContainer.classList.add('single');
+    } else if (childrenCount === 2) {
+        videoContainer.classList.add('two');
+    } else if (childrenCount === 3) {
+        videoContainer.classList.add('three');
+    } else if (childrenCount === 4) {
+        videoContainer.classList.add('four');
+    } else if (childrenCount === 5) {
+        videoContainer.classList.add('five');
+    } else if (childrenCount === 6) {
+        videoContainer.classList.add('six');
+    } else if (childrenCount === 7) {
+        videoContainer.classList.add('seven');
+    } else if (childrenCount === 8) {
+        videoContainer.classList.add('eight');
+    } else if (childrenCount === 9) {
+        videoContainer.classList.add('nine');
+    }
 }
 
 function removeRemoteVideoStream(id) {
