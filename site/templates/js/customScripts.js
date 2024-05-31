@@ -3,12 +3,10 @@ const code = "{{ .code }}"
 function startSession() {
   const privacyModal = document.getElementById('privacyModal');
   const loadingModal = document.getElementById('loadingModal');
-
-  const startButton = privacyModal.querySelector('.button.is-primary.start');
+  const localVideo = document.getElementById('localVideo');
   privacyModal.classList.add("hidden")
   loadingModal.classList.remove("hidden")
-
-  const videos = document.getElementById('videos');
+  localVideo.classList.remove("hidden")
   startLocalVideo()
   startLoading(0, 33);
 };

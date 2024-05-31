@@ -31,6 +31,7 @@ const configuration = {
     ]
 };
 const userId = crypto.randomUUID().split("-")[0];
+let aliveUsers = {}
 let pcs = {}
 const localCandidates = [];
 let localVideo = document.getElementById('localVideo');
@@ -54,8 +55,14 @@ async function createRemoteVideoStream(id) {
     videoElement.muted = true;
     videoElement.playsinline = true;
 
+    const videoOverlay = document.createElement('div');
+    videoOverlay.id = id + '-video-overlay';
+    videoOverlay.classList.add("video-overlay")
+    videoOverlay.innerHTML = "<p>"+id+"</p>"
+
     // Append the video element to the container div
     containerDiv.appendChild(videoElement);
+    containerDiv.appendChild(videoOverlay);
 
     // Append the container div to the main video container
     const videoContainer = document.getElementById('video-container');
@@ -252,6 +259,10 @@ async function handleCreateOffer(id) {
 }
 
 async function newWebRTC(id, msg = {}) {
+    if (id in pcs) {  
+        console.log("skipping, user exists,", id)
+        return
+    }
     if (pcs[id]) {
         pcs[id] = null
     }
