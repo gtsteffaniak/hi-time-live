@@ -31,6 +31,7 @@ const configuration = {
     ]
 };
 const userId = crypto.randomUUID().split("-")[0];
+let aliveUsers = {}
 let pcs = {}
 const localCandidates = [];
 let localVideo = document.getElementById('localVideo');
@@ -54,8 +55,14 @@ async function createRemoteVideoStream(id) {
     videoElement.muted = true;
     videoElement.playsinline = true;
 
+    const videoOverlay = document.createElement('div');
+    videoOverlay.id = id + '-video-overlay';
+    videoOverlay.classList.add("video-overlay")
+    videoOverlay.innerHTML = "<p>"+id+"</p>"
+
     // Append the video element to the container div
     containerDiv.appendChild(videoElement);
+    containerDiv.appendChild(videoOverlay);
 
     // Append the container div to the main video container
     const videoContainer = document.getElementById('video-container');
@@ -68,6 +75,37 @@ async function createRemoteVideoStream(id) {
         console.log("attaching remote view");
         remoteVideo.srcObject = event.streams[0];
     };
+    updateContainerClass();
+}
+
+
+function updateContainerClass() {
+    const videoContainer = document.getElementById('video-container');
+    const childrenCount = videoContainer.children.length;
+
+    // Remove existing classes
+    videoContainer.classList.remove('single', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine');
+
+    // Add appropriate class
+    if (childrenCount === 1) {
+        videoContainer.classList.add('single');
+    } else if (childrenCount === 2) {
+        videoContainer.classList.add('two');
+    } else if (childrenCount === 3) {
+        videoContainer.classList.add('three');
+    } else if (childrenCount === 4) {
+        videoContainer.classList.add('four');
+    } else if (childrenCount === 5) {
+        videoContainer.classList.add('five');
+    } else if (childrenCount === 6) {
+        videoContainer.classList.add('six');
+    } else if (childrenCount === 7) {
+        videoContainer.classList.add('seven');
+    } else if (childrenCount === 8) {
+        videoContainer.classList.add('eight');
+    } else if (childrenCount === 9) {
+        videoContainer.classList.add('nine');
+    }
 }
 
 function removeRemoteVideoStream(id) {
@@ -221,6 +259,10 @@ async function handleCreateOffer(id) {
 }
 
 async function newWebRTC(id, msg = {}) {
+    if (id in pcs) {  
+        console.log("skipping, user exists,", id)
+        return
+    }
     if (pcs[id]) {
         pcs[id] = null
     }

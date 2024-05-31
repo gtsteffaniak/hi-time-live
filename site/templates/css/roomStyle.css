@@ -1,21 +1,3 @@
-#video-container {
-  display: flex;
-  position: fixed;
-  flex-wrap: wrap;
-  flex-direction: row;
-  justify-content: center;
-  align-items: center;
-  width: inherit;
-  height: inherit;
-  max-height: height 100%;
-  overflow-y: auto;
-}
-
-.remote-views {
-  max-width: 100%;
-  max-height: 100%;
-}
-
 video {
   width: 100%;
 }
@@ -36,6 +18,7 @@ video {
   #controls {
     bottom: -6em;
   }
+
   #ctab {
     display: flex !important;
   }
@@ -80,4 +63,107 @@ video {
   margin-right: 1em;
   position: fixed;
   z-index: 3;
+}
+
+#video-container {
+  display: grid;
+  position: fixed;
+  width: 100%;
+  max-height: 100%;
+  gap: 0;
+  /* No gap between grid items */
+}
+
+#video-container>div {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Default: single column */
+#video-container.single {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  max-width: 1000px;
+  max-height: 1000px;
+}
+
+/* 2 children: side-by-side */
+#video-container.two {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
+}
+
+/* 3-4 children: 2x2 grid */
+#video-container.three,
+#video-container.four {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+#video-container.three>div:nth-child(3) {
+  grid-column: span 2;
+  justify-self: center;
+}
+
+/* 5-6 children: 3x2 grid */
+#video-container.five,
+#video-container.six {
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+#video-container.five>div:nth-child(4),
+#video-container.five>div:nth-child(5) {
+  grid-column: span 2;
+  justify-self: center;
+}
+
+/* 7-9 children: 3x3 grid */
+#video-container.seven,
+#video-container.eight,
+#video-container.nine {
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr 1fr;
+}
+
+@media (max-aspect-ratio: 2/3) {
+  /* 2 children: side-by-side */
+  #video-container.two {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+
+  /* 5-6 children: 3x2 grid */
+  #video-container.five,
+  #video-container.six {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr 1fr;
+  }
+}
+
+
+.remote-views {
+  background-color: black;
+  border-color: #1976ed;
+  border-style: solid;
+  border-radius: 1em;
+}
+
+.video-overlay {
+  position: absolute;
+  display: flex;
+  padding: 1em;
+  align-items: flex-start;
+  height: -webkit-fill-available;
+  width: -webkit-fill-available;
+}
+
+.video-overlay>p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+video {
+  border-radius: 0.85em;
 }
