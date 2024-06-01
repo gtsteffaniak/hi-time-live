@@ -85,7 +85,7 @@ video {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
   max-width: 1000px;
-  max-height: 1000px;
+  max-height: 100%;
 }
 
 /* 2 children: side-by-side */
@@ -141,7 +141,6 @@ video {
     grid-template-rows: 1fr 1fr 1fr;
   }
 }
-
 
 .remote-views {
   background-color: black;
