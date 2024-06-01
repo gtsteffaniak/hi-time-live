@@ -41,25 +41,35 @@ func SetupRoutes(e *echo.Echo, devMode bool, logger slog.Logger) {
 func setupMiddleware(e *echo.Echo, logger slog.Logger) {
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		LogStatus:   true,
+		LogMethod:   true,
+		LogRemoteIP: true,
+		LogReferer:  true,
+		LogLatency:  true,
 		LogURI:      true,
 		LogError:    true,
 		HandleError: true, // forwards error to the global error handler
 		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
 			level := slog.LevelInfo
-			errMessage := ""
 			if v.Error != nil {
 				level = slog.LevelError
-				errMessage = v.Error.Error()
+				logger.LogAttrs(context.Background(), level, v.Method,
+					slog.Int("status", v.Status),
+					slog.String("ip", v.RemoteIP),
+					slog.String("referrer", v.Referer),
+					slog.String("latency", v.Latency.String()),
+					slog.String("uri", v.URI),
+					slog.String("error", v.Error.Error()),
+				)
+			} else {
+				logger.LogAttrs(context.Background(), level, v.Method,
+					slog.Int("status", v.Status),
+					slog.String("ip", v.RemoteIP),
+					slog.String("referrer", v.Referer),
+					slog.String("latency", v.Latency.String()),
+					slog.String("uri", v.URI),
+				)
 			}
-			logger.LogAttrs(context.Background(), level, "REQUEST",
-				slog.Int("status", v.Status),
-				slog.String("ip", v.RemoteIP),
-				slog.String("referrer", v.Referer),
-				slog.String("method", v.Method),
-				slog.String("latency", v.Latency.String()),
-				slog.String("uri", v.URI),
-				slog.String("error", errMessage),
-			)
+
 			return nil
 		},
 	}))

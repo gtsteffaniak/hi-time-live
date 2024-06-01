@@ -128,7 +128,6 @@ video {
 }
 
 @media (max-aspect-ratio: 2/3) {
-
   /* 2 children: side-by-side */
   #video-container.two {
     grid-template-columns: 1fr;
