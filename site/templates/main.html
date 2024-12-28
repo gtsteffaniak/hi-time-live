@@ -2,34 +2,18 @@
 <html lang="en">
 
 <head>
-  <title>Hi Time Live</title>
-  <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
-  <meta name="author" content="Graham Steffaniak">
-  <meta name="msapplication-TileColor" content="#7d0e9e">
-  <meta name="theme-color" content="#7d0e9e">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-  <link rel="manifest" href="/site.webmanifest">
-  <meta name="msapplication-TileColor" content="#da532c">
-  <meta name="theme-color" content="#ffffff">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined">
+  {{ template "components/headerInfo.html" }}
   <style>
     {{ template "css/indexStyle.css" }}
-    {{ template "css/baseStyle.css"  }}
   </style>
-
 </head>
 
 <body>
   {{ template "components/modals/joinModal.html" }}
   {{ template "components/mainMenu.html" . }}
+  <script>
+    {{ template "js/customScripts.js". }}
+  </script>
 </body>
 
 </html>
-
-<script>
-  {{ template "js/customScripts.js". }}
-</script>

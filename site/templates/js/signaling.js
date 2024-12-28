@@ -51,7 +51,6 @@ async function createRemoteVideoStream(id) {
     // Create the video element
     const videoElement = document.createElement('video');
     videoElement.id = id + '-remoteVideo';
-    videoElement.autoplay = true;
     videoElement.muted = true;
     videoElement.playsinline = true;
 
