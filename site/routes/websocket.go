@@ -3,10 +3,10 @@ package routes
 import (
 	"encoding/json"
 	"log/slog"
+	"net/http"
 	"sync"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
 	"golang.org/x/net/websocket"
 )
 
@@ -44,7 +44,7 @@ func notifyClosedConnection(id string) {
 	}
 }
 
-func wsHandler(c echo.Context) error {
+func wsHandler(w http.ResponseWriter, r *http.Request) error {
 	websocket.Handler(func(ws *websocket.Conn) {
 		connId := uuid.New().String()
 		newConnection := connection{
