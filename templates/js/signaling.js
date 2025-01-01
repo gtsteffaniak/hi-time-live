@@ -6,7 +6,8 @@
  *  tree.
  */
 
-let ws;
+
+let eventSrc;
 let localStream;
 const videoConstraints = {
     audio: true,
@@ -57,7 +58,7 @@ async function createRemoteVideoStream(id) {
     const videoOverlay = document.createElement('div');
     videoOverlay.id = id + '-video-overlay';
     videoOverlay.classList.add("video-overlay")
-    videoOverlay.innerHTML = "<p>"+id+"</p>"
+    videoOverlay.innerHTML = "<p>" + id + "</p>"
 
     // Append the video element to the container div
     containerDiv.appendChild(videoElement);
@@ -233,7 +234,7 @@ async function handleOffer(msg) {
     }
     console.log("sending answer", id)
     // Exchange the answer with the remote peer
-    ws.json(responseMessage)
+    sendEvent(responseMessage)
     loadingModal = document.getElementById('loadingModal');
     loadingModal.classList.add("hidden")
     await pcs[id].setLocalDescription(answer);
@@ -253,12 +254,22 @@ async function handleCreateOffer(id) {
         code: "{{ .code }}",
     }
     console.log("sending offer to ", id)
+    sendEvent(responseMessage)
+}
+
+function sendEvent(msg) {
     // Exchange the answer with the remote peer
-    ws.json(responseMessage)
+    fetch("/event", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(msg)
+    })
 }
 
 async function newWebRTC(id, msg = {}) {
-    if (id in pcs) {  
+    if (id in pcs) {
         console.log("skipping, user exists,", id)
         return
     }
@@ -276,24 +287,28 @@ async function newWebRTC(id, msg = {}) {
     }
 }
 
-function startwebsocket() {
-    var loc = window.location;
-    uri = 'wss://' + loc.host + '/ws';
-    ws = new WebSocket(uri)
-    ws.json = (obj) => ws.send(JSON.stringify(obj));
-    ws.onopen = function () {
-        const msg = {
-            eventType: "newUser",
-            userId: userId,
-            code: "{{ .code }}",
+function startSSE() {
+    const eventSrc = new EventSource(`/events?userId=${userId}&code={{ .code }}`);
+
+    eventSrc.onopen = () => {
+        console.log("SSE connection established.");
+    };
+
+    eventSrc.onerror = (err) => {
+        console.log("SSE error:", err);
+    };
+
+    eventSrc.onmessage = (event) => {
+        console.log("Raw event:", event.data);
+
+        try {
+            const msg = JSON.parse(event.data);
+            console.log("Event received:", msg);
+            eventRouter(msg);
+        } catch (err) {
+            console.log("Error parsing event data:", err);
         }
-        ws.json(msg);
-        updateStatusText("Waiting for connection")
-    }
-    ws.onmessage = function (evt) {
-        const msg = JSON.parse(evt.data)
-        eventRouter(msg)
-    }
+    };
 }
 
 async function eventRouter(msg) {
@@ -321,7 +336,7 @@ async function startLocalVideo() {
     localVideo.srcObject = localStream;
     const controls = document.getElementById('controls')
     controls.classList.remove("hidden")
-    startwebsocket()
+    startSSE()
 }
 
 async function handleClose(msg) {

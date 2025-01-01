@@ -41,7 +41,6 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		"hidden":    "hidden",
 		"code":      id,
 	}
-	fmt.Println("rendering main.html")
 	templateRenderer.Render(w, "main.html", data)
 }
 
@@ -81,4 +80,13 @@ func (t *TemplateRenderer) loadTemplates() error {
 		}
 	}
 	return nil
+}
+
+func staticHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/" {
+		indexHandler(w, r)
+		return
+	}
+	fmt.Println("static handler", r.URL.Path)
+	http.ServeFile(w, r, "static"+r.URL.Path)
 }
