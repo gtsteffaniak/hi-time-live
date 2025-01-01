@@ -58,7 +58,7 @@ async function createRemoteVideoStream(id) {
     const videoOverlay = document.createElement('div');
     videoOverlay.id = id + '-video-overlay';
     videoOverlay.classList.add("video-overlay")
-    videoOverlay.innerHTML = "<p>"+id+"</p>"
+    videoOverlay.innerHTML = "<p>" + id + "</p>"
 
     // Append the video element to the container div
     containerDiv.appendChild(videoElement);
@@ -234,7 +234,7 @@ async function handleOffer(msg) {
     }
     console.log("sending answer", id)
     // Exchange the answer with the remote peer
-    ws.json(responseMessage)
+    sendEvent(responseMessage)
     loadingModal = document.getElementById('loadingModal');
     loadingModal.classList.add("hidden")
     await pcs[id].setLocalDescription(answer);
@@ -254,8 +254,18 @@ async function handleCreateOffer(id) {
         code: "{{ .code }}",
     }
     console.log("sending offer to ", id)
+    sendEvent(responseMessage)
+}
+
+function sendEvent(msg) {
     // Exchange the answer with the remote peer
-    ws.json(responseMessage)
+    fetch("/event", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(msg)
+    })
 }
 
 async function newWebRTC(id, msg = {}) {
@@ -278,7 +288,7 @@ async function newWebRTC(id, msg = {}) {
 }
 
 function startSSE() {
-    const eventSrc = new EventSource("/events");
+    const eventSrc = new EventSource(`/events?userId=${userId}&code={{ .code }}`);
 
     eventSrc.onopen = () => {
         console.log("SSE connection established.");
@@ -290,14 +300,16 @@ function startSSE() {
 
     eventSrc.onmessage = (event) => {
         console.log("Raw event:", event.data);
+
+        try {
+            const msg = JSON.parse(event.data);
+            console.log("Event received:", msg);
+            eventRouter(msg);
+        } catch (err) {
+            console.log("Error parsing event data:", err);
+        }
     };
-
-    eventSrc.addEventListener("hello", (event) => {
-        console.log( event.data);
-    });
-
 }
-
 
 async function eventRouter(msg) {
     switch (msg.eventType) {

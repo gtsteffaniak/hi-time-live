@@ -1,11 +1,8 @@
 package routes
 
 import (
-	"compress/gzip"
-	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -33,6 +30,18 @@ func (w *ResponseWriterWrapper) WriteHeader(statusCode int) {
 		w.ResponseWriter.WriteHeader(statusCode)
 		w.wroteHeader = true
 	}
+}
+
+func (w *ResponseWriterWrapper) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (w *ResponseWriterWrapper) Write(data []byte) (int, error) {
+	size, err := w.ResponseWriter.Write(data)
+	w.PayloadSize += size
+	return size, err
 }
 
 // LoggingMiddleware logs each request and its status code.
@@ -72,38 +81,4 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 			"\033[0m", // Reset color
 		)
 	})
-}
-
-func renderJSON(w http.ResponseWriter, r *http.Request, data interface{}) (int, error) {
-	marsh, err := json.Marshal(data)
-	if err != nil {
-		return http.StatusInternalServerError, err
-	}
-	// Calculate size in KB
-	payloadSizeKB := len(marsh) / 1024
-	// Check if the client accepts gzip encoding and hasn't explicitly disabled it
-	if acceptsGzip(r) && payloadSizeKB > 10 {
-		// Enable gzip compression
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.Header().Set("Content-Encoding", "gzip")
-		gz := gzip.NewWriter(w)
-		defer gz.Close()
-
-		if _, err := gz.Write(marsh); err != nil {
-			return http.StatusInternalServerError, err
-		}
-	} else {
-		// Normal response without compression
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		if _, err := w.Write(marsh); err != nil {
-			return http.StatusInternalServerError, err
-		}
-	}
-
-	return 0, nil
-}
-
-func acceptsGzip(r *http.Request) bool {
-	ae := r.Header.Get("Accept-Encoding")
-	return ae != "" && strings.Contains(ae, "gzip")
 }

@@ -12,8 +12,9 @@
 This video conferencing software combines three technologies to create an all-in-one web application:
 
 1. WebRTC with html/JavaScript in the client-side browser to handle the user interface.
-2. WebSocket communication channel between browser and signaling server.
-3. Signaling server to facilitate the connection information, written in go.
+2. Continuous Server Sent Event communication channel for realtime updates.
+3. rest http PUT event endpoint for client updates.
+4. Signaling server to facilitate the connection information, written in go.
 
 <p align="center">
   <img width="500" src="https://lh3.googleusercontent.com/tn1h7nq5-ANzEyuwISMNLqFngijegUKAAfIkqoy76lg3ewxnI2wDGBtA29vIgp96CyivhVOEuh_OkX7jjAc_e4r-_m5LpZStO8Bxc3VFvOL-XVEB51mnOJSzrnXwzpHGE-DFsq6w" title="WebRTC">

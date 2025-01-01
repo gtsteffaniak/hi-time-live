@@ -13,7 +13,7 @@ func StartRouter(devMode bool, logger slog.Logger) {
 	router.HandleFunc("GET /room", roomHandler)
 	//router.HandleFunc("GET /static/", indexHandler)
 	router.HandleFunc("GET /events", sseHandler)
-	router.HandleFunc("PUT /event", putEventHandler)
+	router.HandleFunc("POST /event", postEventHandler)
 	router.HandleFunc("/", indexHandler)
 	// Register custom template renderer
 	templateRenderer = &TemplateRenderer{
@@ -22,10 +22,20 @@ func StartRouter(devMode bool, logger slog.Logger) {
 	}
 	templateRenderer.loadTemplates()
 
-	// Load the TLS certificate and key
+	// Attempt to load the TLS certificate and key
 	cer, err := tls.LoadX509KeyPair("cert.pem", "key.pem")
 	if err != nil {
-		log.Fatalf("could not load certificate: %v", err)
+		log.Printf("could not load certificate, falling back to HTTP: %v", err)
+
+		// Fallback to HTTP on port 80
+		port := 80
+		fullURL := fmt.Sprintf("http://localhost:%d", port)
+		log.Printf("Running in HTTP mode at: %s", fullURL)
+		err = http.ListenAndServe(fmt.Sprintf(":%d", port), muxWithMiddleware(router))
+		if err != nil {
+			log.Fatalf("could not start HTTP server: %v", err)
+		}
+		return
 	}
 
 	// Create a custom TLS listener
