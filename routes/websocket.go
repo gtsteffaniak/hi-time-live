@@ -3,10 +3,8 @@ package routes
 import (
 	"encoding/json"
 	"log/slog"
-	"net/http"
 	"sync"
 
-	"github.com/google/uuid"
 	"golang.org/x/net/websocket"
 )
 
@@ -42,41 +40,6 @@ func notifyClosedConnection(id string) {
 			"userId":    id,
 		})
 	}
-}
-
-func wsHandler(w http.ResponseWriter, r *http.Request) error {
-	websocket.Handler(func(ws *websocket.Conn) {
-		connId := uuid.New().String()
-		newConnection := connection{
-			userId: connId, // temporary id
-			ws:     ws,
-		}
-		defer func() {
-			newConnection.close()
-		}()
-
-		for {
-			msg := ""
-			err := websocket.Message.Receive(ws, &msg)
-			if err != nil {
-				slog.Error("Incoming websocket failed ", "connId", connId, "error", err)
-				return
-			}
-			var message map[string]string
-			err = json.Unmarshal([]byte(msg), &message)
-			if err != nil {
-				slog.Error("Unable to handle message", "connId", connId, "error", err)
-				continue
-			}
-			newConnection.userId = message["userId"]
-			newConnection.roomId = message["code"]
-			connLock.Lock()
-			connections[newConnection.userId] = newConnection
-			connLock.Unlock()
-			newConnection.eventRouter(message)
-		}
-	}).ServeHTTP(c.Response(), c.Request())
-	return nil
 }
 
 func (conn connection) eventRouter(message map[string]string) {

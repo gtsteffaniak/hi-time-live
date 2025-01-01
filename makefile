@@ -9,8 +9,7 @@ run-docker:
 # first run : export GOROOT=$(go env GOROOT)
 setup:
 	export GOROOT=$(go env GOROOT)
-	go run $(GOROOT)/src/crypto/tls/generate_cert.go --host localhost && \
-	mv *.pem ./site/
+	go run $(GOROOT)/src/crypto/tls/generate_cert.go --host localhost
 
 run:
 	cd site && go run . --dev

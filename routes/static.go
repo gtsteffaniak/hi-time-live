@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -41,7 +40,6 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		"hidden":    "hidden",
 		"code":      id,
 	}
-	fmt.Println("rendering main.html")
 	templateRenderer.Render(w, "main.html", data)
 }
 

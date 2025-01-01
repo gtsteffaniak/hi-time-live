@@ -6,7 +6,8 @@
  *  tree.
  */
 
-let ws;
+
+let eventSrc;
 let localStream;
 const videoConstraints = {
     audio: true,
@@ -258,7 +259,7 @@ async function handleCreateOffer(id) {
 }
 
 async function newWebRTC(id, msg = {}) {
-    if (id in pcs) {  
+    if (id in pcs) {
         console.log("skipping, user exists,", id)
         return
     }
@@ -276,25 +277,27 @@ async function newWebRTC(id, msg = {}) {
     }
 }
 
-function startwebsocket() {
-    var loc = window.location;
-    uri = 'wss://' + loc.host + '/ws';
-    ws = new WebSocket(uri)
-    ws.json = (obj) => ws.send(JSON.stringify(obj));
-    ws.onopen = function () {
-        const msg = {
-            eventType: "newUser",
-            userId: userId,
-            code: "{{ .code }}",
-        }
-        ws.json(msg);
-        updateStatusText("Waiting for connection")
-    }
-    ws.onmessage = function (evt) {
-        const msg = JSON.parse(evt.data)
-        eventRouter(msg)
-    }
+function startSSE() {
+    const eventSrc = new EventSource("/events");
+
+    eventSrc.onopen = () => {
+        console.log("SSE connection established.");
+    };
+
+    eventSrc.onerror = (err) => {
+        console.log("SSE error:", err);
+    };
+
+    eventSrc.onmessage = (event) => {
+        console.log("Raw event:", event.data);
+    };
+
+    eventSrc.addEventListener("hello", (event) => {
+        console.log( event.data);
+    });
+
 }
+
 
 async function eventRouter(msg) {
     switch (msg.eventType) {
@@ -321,7 +324,7 @@ async function startLocalVideo() {
     localVideo.srcObject = localStream;
     const controls = document.getElementById('controls')
     controls.classList.remove("hidden")
-    startwebsocket()
+    startSSE()
 }
 
 async function handleClose(msg) {
