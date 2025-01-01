@@ -10,10 +10,10 @@ import (
 
 func StartRouter(devMode bool, logger slog.Logger) {
 	router := http.NewServeMux()
+	router.HandleFunc("GET /events", sseHandler)       // Server-Sent Events endpoint
+	router.HandleFunc("POST /event", postEventHandler) // Rest endpoint for client event responses
 	router.HandleFunc("GET /room", roomHandler)
-	//router.HandleFunc("GET /static/", indexHandler)
-	router.HandleFunc("GET /events", sseHandler)
-	router.HandleFunc("POST /event", postEventHandler)
+	router.HandleFunc("GET /", staticHandler)
 	router.HandleFunc("/", indexHandler)
 	// Register custom template renderer
 	templateRenderer = &TemplateRenderer{
@@ -60,5 +60,4 @@ func StartRouter(devMode bool, logger slog.Logger) {
 	if err != nil {
 		log.Fatalf("could not start server: %v", err)
 	}
-	slog.Info("listening: http://localhost")
 }

@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -79,4 +80,13 @@ func (t *TemplateRenderer) loadTemplates() error {
 		}
 	}
 	return nil
+}
+
+func staticHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/" {
+		indexHandler(w, r)
+		return
+	}
+	fmt.Println("static handler", r.URL.Path)
+	http.ServeFile(w, r, "static"+r.URL.Path)
 }
