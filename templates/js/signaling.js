@@ -44,7 +44,8 @@ async function createRemoteVideoStream(id) {
     // Create the video element
     const videoElement = document.createElement('video');
     videoElement.id = id + '-remoteVideo';
-    videoElement.muted = true;
+    videoElement.muted = false;
+    videoElement.autoplay = true;
     videoElement.playsinline = true;
 
     const videoOverlay = document.createElement('div');
@@ -105,6 +106,7 @@ function removeRemoteVideoStream(id) {
     if (containerDiv) {
         containerDiv.remove(); // Removes the container div from the DOM
     }
+    updateContainerClass()
     const videoContainer = document.getElementById('video-container');
     const count = videoContainer.getElementsByTagName('video').length;
     if (count <= 0) {
@@ -256,7 +258,9 @@ function sendEvent(msg) {
             "Content-Type": "application/json"
         },
         body: JSON.stringify(msg)
-    })
+    }).then(response => console.log(response))
+        .catch(error => console.error('Fetch error:', error));
+
 }
 
 async function newWebRTC(id, msg = {}) {

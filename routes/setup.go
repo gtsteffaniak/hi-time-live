@@ -28,7 +28,7 @@ func StartRouter(devMode bool, logger slog.Logger) {
 		log.Printf("could not load certificate, falling back to HTTP: %v", err)
 
 		// Fallback to HTTP on port 80
-		port := 80
+		port := 8080
 		fullURL := fmt.Sprintf("http://localhost:%d", port)
 		log.Printf("Running in HTTP mode at: %s", fullURL)
 		err = http.ListenAndServe(fmt.Sprintf(":%d", port), muxWithMiddleware(router))
@@ -46,7 +46,7 @@ func StartRouter(devMode bool, logger slog.Logger) {
 
 	// Set HTTPS scheme and default port for TLS
 	scheme := "https"
-	port := 443
+	port := 8080
 
 	// Listen on TCP and wrap with TLS
 	listener, err := tls.Listen("tcp", fmt.Sprintf(":%v", port), tlsConfig)

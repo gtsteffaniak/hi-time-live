@@ -28,6 +28,7 @@ type eventMessage struct {
 	Code       string `json:"code,omitempty"`
 	Message    string `json:"message,omitempty"`
 	Answer     string `json:"answer,omitempty"`
+	ForUser    string `json:"forUser,omitempty"`
 	Time       string `json:"time,omitempty"`
 }
 
@@ -74,41 +75,40 @@ func sseHandler(w http.ResponseWriter, r *http.Request) {
 		delete(connections, connId)
 		connLock.Unlock()
 		close(messageCh)
-		fmt.Println("Connection closed:", connId)
 	}()
 
-	fmt.Println("New connection:", connId)
 	// Listen for messages and client disconnection
 	clientGone := r.Context().Done()
 	// Send an initial ping to confirm the connection
 	ack, err := json.Marshal(eventMessage{EventType: "acknowledge"})
 	if err != nil {
-		fmt.Println("Error marshalling JSON:", err)
+		slog.Error("marshalling JSON", "error", err)
 		return
 	}
 	doNewUserStuff(eventMessage{Code: roomId, UserId: userId})
 	_, err = fmt.Fprintf(w, "data: %s\n\n", ack)
 	if err != nil {
-		fmt.Println("Error sending initial ping:", err)
+		slog.Error("initial ping", "error", err)
 		return
 	}
 	flusher.Flush()
 	for {
 		select {
 		case <-clientGone:
-			fmt.Println("Client disconnected:", connId)
-			removeUserMsg := eventMessage{Code: roomId, UserId: userId, EventType: "removeUser"}
-			sendToOthers(connId, removeUserMsg)
+			slog.Debug("client disconnected", "debug", connId)
+			removedUserMsg := eventMessage{Code: roomId, UserId: userId, EventType: "removedUser"}
+			sendToOthers(connId, removedUserMsg)
 			return
 		case msg := <-messageCh:
-			fmt.Println("Sending message to", connId, msg)
+			slog.Debug("Sending message to", connId, msg.EventType)
 			jsonString, err := json.Marshal(msg)
 			if err != nil {
-				fmt.Println("Error marshalling JSON:", err)
+				slog.Error("marshalling JSON", "error", err)
 				return
 			}
 			_, err = fmt.Fprintf(w, "data: %s\n\n", jsonString)
 			if err != nil {
+				slog.Error("sending message", "error", err)
 				return
 			}
 			flusher.Flush()
@@ -118,7 +118,6 @@ func sseHandler(w http.ResponseWriter, r *http.Request) {
 
 // Handle incoming events
 func postEventHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("new post event")
 	var event eventMessage
 	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
 		http.Error(w, "Error decoding JSON", http.StatusBadRequest)
@@ -127,11 +126,13 @@ func postEventHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch event.EventType {
 	case "newOffer":
-		slog.Debug("newOffer: " + event.UserId)
 		sendToOthers(event.UserId, event)
 	case "answer":
-		slog.Debug("answer: " + event.UserId)
-		sendToOthers(event.UserId, event)
+		if event.ForUser == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		sendMessageToUser(event.ForUser, event)
 	default:
 		slog.Debug("Broadcasting to all event type: " + event.EventType)
 		broadcastToRoom(event.Code, event)
@@ -149,9 +150,7 @@ func sendToOthers(userId string, event eventMessage) {
 			// Send the message to the connection's channel
 			select {
 			case conn.messageCh <- event:
-				fmt.Println("Sent message to", conn.userId, "about user", userId)
 			default:
-				fmt.Println("Failed to send message to", conn.userId, "(channel might be full)")
 			}
 		}
 	}
