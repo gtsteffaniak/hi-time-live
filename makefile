@@ -1,6 +1,6 @@
 
 build-docker:
-	cd site && go mod vendor && cd .. && \
+	go mod vendor && cd .. && \
 	docker build -t hi-time-live .
 
 run-docker:
@@ -12,13 +12,13 @@ setup:
 	go run $(GOROOT)/src/crypto/tls/generate_cert.go --host localhost
 
 run:
-	cd site && go run . --dev
+	go run . --dev
 
 test:
-	cd site && go test -v --race ./...
+	go test -v --race ./...
 
 lint:
-	cd site && golangci-lint run
+	golangci-lint run
 
 format:
-	cd site && go fmt ./...
+	go fmt ./...

@@ -150,12 +150,10 @@ video {
 }
 
 .video-overlay {
-  position: absolute;
   display: flex;
+  flex-basis: content;
   padding: 1em;
   align-items: flex-start;
-  height: -webkit-fill-available;
-  width: -webkit-fill-available;
 }
 
 .video-overlay>p {

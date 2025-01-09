@@ -27,7 +27,8 @@ type eventMessage struct {
 	Candidates string `json:"candidates,omitempty"`
 	Code       string `json:"code,omitempty"`
 	Message    string `json:"message,omitempty"`
-	Time       string `json:"time"`
+	Answer     string `json:"answer,omitempty"`
+	Time       string `json:"time,omitempty"`
 }
 
 // Handle SSE connection
@@ -96,9 +97,11 @@ func sseHandler(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-clientGone:
 			fmt.Println("Client disconnected:", connId)
+			removeUserMsg := eventMessage{Code: roomId, UserId: userId, EventType: "removeUser"}
+			sendToOthers(connId, removeUserMsg)
 			return
 		case msg := <-messageCh:
-			fmt.Println("Sending message to", connId)
+			fmt.Println("Sending message to", connId, msg)
 			jsonString, err := json.Marshal(msg)
 			if err != nil {
 				fmt.Println("Error marshalling JSON:", err)
@@ -128,7 +131,7 @@ func postEventHandler(w http.ResponseWriter, r *http.Request) {
 		sendToOthers(event.UserId, event)
 	case "answer":
 		slog.Debug("answer: " + event.UserId)
-		sendMessageToUser(event.UserId, event)
+		sendToOthers(event.UserId, event)
 	default:
 		slog.Debug("Broadcasting to all event type: " + event.EventType)
 		broadcastToRoom(event.Code, event)
@@ -146,7 +149,7 @@ func sendToOthers(userId string, event eventMessage) {
 			// Send the message to the connection's channel
 			select {
 			case conn.messageCh <- event:
-				fmt.Println("Notified user", conn.userId, "about new user", userId)
+				fmt.Println("Sent message to", conn.userId, "about user", userId)
 			default:
 				fmt.Println("Failed to send message to", conn.userId, "(channel might be full)")
 			}

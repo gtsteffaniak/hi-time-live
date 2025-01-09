@@ -1,14 +1,6 @@
-/*
- *  Copyright (c) 2021 The WebRTC project authors. All Rights Reserved.
- *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree.
- */
-
-
 let eventSrc;
 let localStream;
+
 const videoConstraints = {
     audio: true,
     video: {
@@ -194,7 +186,6 @@ async function waitForCandidates(id) {
         localStream.getTracks().forEach((track) => pcs[id].addTrack(track, localStream));
 
     }
-
     let offer = await pcs[id].createOffer();
     const filteredSDP = filterCodecs(offer.sdp, allowedCodecs);
     offer.sdp = filteredSDP;
@@ -269,6 +260,7 @@ function sendEvent(msg) {
 }
 
 async function newWebRTC(id, msg = {}) {
+    console.log("adding new user to pcs: ", id)
     if (id in pcs) {
         console.log("skipping, user exists,", id)
         return
@@ -277,6 +269,8 @@ async function newWebRTC(id, msg = {}) {
         pcs[id] = null
     }
     pcs[id] = await new RTCPeerConnection(configuration);
+    console.log("new user pcs: ", pcs[id])
+
     await waitForCandidates(id)
     if ('offer' in msg) {
         console.log("handing with offer ", id)
@@ -372,5 +366,4 @@ async function handleCandidate(candidate) {
         console.log("new candidate")
         localCandidates.push(candidate)
     }
-
 }
