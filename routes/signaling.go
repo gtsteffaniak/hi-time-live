@@ -3,7 +3,6 @@ package routes
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -82,33 +81,34 @@ func sseHandler(w http.ResponseWriter, r *http.Request) {
 	// Send an initial ping to confirm the connection
 	ack, err := json.Marshal(eventMessage{EventType: "acknowledge"})
 	if err != nil {
-		slog.Error("marshalling JSON", "error", err)
+		fmt.Println("error marshalling JSON", err)
 		return
 	}
 	doNewUserStuff(eventMessage{Code: roomId, UserId: userId})
 	_, err = fmt.Fprintf(w, "data: %s\n\n", ack)
 	if err != nil {
-		slog.Error("initial ping", "error", err)
+		fmt.Println("error initial ping", err)
 		return
 	}
 	flusher.Flush()
 	for {
 		select {
 		case <-clientGone:
-			slog.Debug("client disconnected", "debug", connId)
+			fmt.Println("client disconnected", userId)
+			removeUserFromRoom(roomId, userId)
 			removedUserMsg := eventMessage{Code: roomId, UserId: userId, EventType: "removedUser"}
 			sendToOthers(connId, removedUserMsg)
 			return
 		case msg := <-messageCh:
-			slog.Debug("Sending message to", connId, msg.EventType)
+			fmt.Println("sending message to", userId, msg.EventType)
 			jsonString, err := json.Marshal(msg)
 			if err != nil {
-				slog.Error("marshalling JSON", "error", err)
+				fmt.Println("error marshalling JSON", err)
 				return
 			}
 			_, err = fmt.Fprintf(w, "data: %s\n\n", jsonString)
 			if err != nil {
-				slog.Error("sending message", "error", err)
+				fmt.Println("error sending message", err)
 				return
 			}
 			flusher.Flush()
@@ -134,7 +134,7 @@ func postEventHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		sendMessageToUser(event.ForUser, event)
 	default:
-		slog.Debug("Broadcasting to all event type: " + event.EventType)
+		fmt.Println("Unknown event type: ", event.EventType)
 		broadcastToRoom(event.Code, event)
 	}
 	w.WriteHeader(http.StatusOK)
@@ -183,11 +183,12 @@ func doNewUserStuff(message eventMessage) {
 	var err error
 	numUsers, err := attemptJoin(message.Code, message.UserId)
 	if err != nil {
-		slog.Error("attempt join", "error", err)
+		fmt.Println("error joining room", err)
 		return
 	}
 	sendMessageToUser(message.UserId, eventMessage{EventType: "acknowledge"})
 	if numUsers > 1 {
+		fmt.Println("sending to others", message.UserId)
 		sendToOthers(message.UserId, eventMessage{EventType: "newUser", UserId: message.UserId})
 	}
 }

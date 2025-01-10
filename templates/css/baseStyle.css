@@ -57,10 +57,8 @@ a {
 
 .modal {
   color: lightgray;
-  display: flex;
-  justify-content: center;
-  align-content: center;
-  align-items: center;
+  display: contents;
+  position: fixed;
   width: 100%;
   height: 100%;
 }

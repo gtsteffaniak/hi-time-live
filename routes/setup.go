@@ -4,11 +4,10 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
-	"log/slog"
 	"net/http"
 )
 
-func StartRouter(devMode bool, logger slog.Logger) {
+func StartRouter(devMode bool) {
 	router := http.NewServeMux()
 	router.HandleFunc("GET /events", sseHandler)       // Server-Sent Events endpoint
 	router.HandleFunc("POST /event", postEventHandler) // Rest endpoint for client event responses

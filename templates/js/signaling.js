@@ -44,7 +44,7 @@ async function createRemoteVideoStream(id) {
     // Create the video element
     const videoElement = document.createElement('video');
     videoElement.id = id + '-remoteVideo';
-    videoElement.muted = false;
+    videoElement.muted = true; // for safari to autoplay
     videoElement.autoplay = true;
     videoElement.playsinline = true;
 
@@ -63,41 +63,52 @@ async function createRemoteVideoStream(id) {
 
     // Set the ontrack event handler for the peer connection
     pcs[id].ontrack = (event) => {
-        let remoteVideo = document.getElementById(videoElement.id);
-        if (remoteVideo.srcObject) return;
-        console.log("attaching remote view");
-        remoteVideo.srcObject = event.streams[0];
+        console.log("ontrack event:", id,event);
+        const remoteStream = event.streams[0]; // Get the remote stream
+        const remoteVideo = document.getElementById(videoElement.id);
+
+        if (remoteVideo.srcObject) return; // Prevent redundant attachment
+
+        console.log("Attaching remote view: ", id, "to stream:", remoteStream);
+
+        // Attach the stream to the video element
+        attachMediaStream(remoteVideo, remoteStream);
     };
-    updateContainerClass();
+
 }
 
+// Helper function to attach media stream to the video element
+function attachMediaStream(video, stream,id) {
+    try {
+        // Use Safari-friendly attachment logic
+        video.srcObject = stream;
+        video.addEventListener("loadedmetadata", async () => {
+            try {
+                await video.play(); // Ensure video playback starts
+                console.log("Remote video is playing for:", id);
+                video.muted = false; // Unmute after video starts
+            } catch (playError) {
+                console.error("Error playing the remote video:", playError);
 
-function updateContainerClass() {
-    const videoContainer = document.getElementById('video-container');
-    const childrenCount = videoContainer.children.length;
+                // Optional: Add a fallback for user interaction
+                const overlay = document.getElementById(id + '-video-overlay');
+                overlay.innerHTML += "<p>Click to play</p>";
+                overlay.style.cursor = "pointer";
 
-    // Remove existing classes
-    videoContainer.classList.remove('single', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine');
-
-    // Add appropriate class
-    if (childrenCount === 1) {
-        videoContainer.classList.add('single');
-    } else if (childrenCount === 2) {
-        videoContainer.classList.add('two');
-    } else if (childrenCount === 3) {
-        videoContainer.classList.add('three');
-    } else if (childrenCount === 4) {
-        videoContainer.classList.add('four');
-    } else if (childrenCount === 5) {
-        videoContainer.classList.add('five');
-    } else if (childrenCount === 6) {
-        videoContainer.classList.add('six');
-    } else if (childrenCount === 7) {
-        videoContainer.classList.add('seven');
-    } else if (childrenCount === 8) {
-        videoContainer.classList.add('eight');
-    } else if (childrenCount === 9) {
-        videoContainer.classList.add('nine');
+                overlay.addEventListener("click", async () => {
+                    try {
+                        overlay.style.display = "none"; // Hide the overlay
+                        await video.play();
+                        console.log("Remote video resumed after user interaction:", id);
+                        video.muted = false;
+                    } catch (interactionError) {
+                        console.error("Error playing the video after user interaction:", interactionError);
+                    }
+                });
+            }
+        });
+    } catch (error) {
+        console.error("Error attaching media stream:", error);
     }
 }
 
@@ -106,7 +117,6 @@ function removeRemoteVideoStream(id) {
     if (containerDiv) {
         containerDiv.remove(); // Removes the container div from the DOM
     }
-    updateContainerClass()
     const videoContainer = document.getElementById('video-container');
     const count = videoContainer.getElementsByTagName('video').length;
     if (count <= 0) {
@@ -207,8 +217,9 @@ async function waitForCandidates(id) {
 
 async function handleOffer(msg) {
     let id = msg.userId
-    console.log("handling offer", msg.offer)
-    const offerDescription = new RTCSessionDescription({ "type": "offer", "sdp": msg.offer });
+    if 
+    console.log("handling offer from", msg.userId)
+    const offerDescription = new RTCSessionDescription({ "type": "offer", "sdp": msg.offer })
     await pcs[id].setRemoteDescription(offerDescription);
     handleRemoteCandidates(msg)
 
@@ -225,7 +236,7 @@ async function handleOffer(msg) {
         candidates: JSON.stringify(localCandidates),
         code: "{{ .code }}",
     }
-    console.log("sending answer", id)
+    console.log("sending answer to ", id)
     // Exchange the answer with the remote peer
     sendEvent(responseMessage)
     loadingModal = document.getElementById('loadingModal');
@@ -277,10 +288,8 @@ async function newWebRTC(id, msg = {}) {
 
     await waitForCandidates(id)
     if ('offer' in msg) {
-        console.log("handing with offer ", id)
         handleOffer(msg)
     } else {
-        console.log("handing without offer ", id)
         handleCreateOffer(id)
     }
 }
@@ -297,11 +306,8 @@ function startSSE() {
     };
 
     eventSrc.onmessage = (event) => {
-        console.log("Raw event:", event.data);
-
         try {
             const msg = JSON.parse(event.data);
-            console.log("Event received:", msg);
             eventRouter(msg);
         } catch (err) {
             console.log("Error parsing event data:", err);
@@ -311,16 +317,12 @@ function startSSE() {
 
 async function eventRouter(msg) {
     switch (msg.eventType) {
-        case "newUser":
-            newWebRTC(msg.userId)
+        case "newUser","newOffer":
+            newWebRTC(msg.userId,msg)
             break
         case "acknowledge":
             startLoading(33, 100);
             updateStatusText("Waiting on others to join")
-            break
-        case "newOffer":
-            console.log("newOffer:", msg.userId)
-            newWebRTC(msg.userId, msg)
             break
         case "removedUser": handleClose(msg); break
         case "answer": handleAnswer(msg); break
@@ -343,11 +345,11 @@ async function handleClose(msg) {
         pcs[msg.userId] = null;
     }
     removeRemoteVideoStream(msg.userId)
-    console.log("closed video of peer")
+    console.log("closed video of peer: ", msg.Id)
 }
 
 async function handleAnswer(msg) {
-    console.log(msg.userId, "handling answer", msg.answer)
+    console.log("handling answer from ", msg.userId)
     await pcs[msg.userId].setRemoteDescription({ "type": "answer", "sdp": msg.answer });
     handleRemoteCandidates(msg)
 
@@ -358,8 +360,7 @@ async function handleAnswer(msg) {
 
 async function handleRemoteCandidates(message) {
     let candidates = JSON.parse(message.candidates)
-    console.log("candidates from", message.userId)
-
+    console.log("candidates from ", message.userId)
     for (c in candidates) {
         await pcs[message["userId"]].addIceCandidate(candidates[c])
     }

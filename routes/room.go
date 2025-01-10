@@ -54,7 +54,8 @@ func validCode(code string) bool {
 	return valid
 }
 
-func (r *room) removeUserFromRoom(id string) {
+func removeUserFromRoom(code string, id string) {
+	r := getRoom(code)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	withoutUser := []string{}
