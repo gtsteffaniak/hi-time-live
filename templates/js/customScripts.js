@@ -11,11 +11,14 @@ function startSession() {
   startLoading(0, 33);
 };
 
-function copyToClipboard() {
-  var copyText = document.getElementById("copyCode");
-  copyText.select();
-  document.execCommand("copy");
-  console.log("copied code: " + copyText.value);
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text)
+      .then(() => {
+          console.log("Copied to clipboard: " + text);
+      })
+      .catch(err => {
+          console.error("Failed to copy text: ", err);
+      });
 }
 
 function goToRoom() {

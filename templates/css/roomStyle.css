@@ -66,8 +66,6 @@
 #video-container {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(15em, 1fr)); /* Flexible grid items */
-  width: 100vw;
-  height: 100vh;
   gap: 1em; /* Spacing between grid items */
   box-sizing: border-box; /* Includes padding/border in dimensions */
   overflow: hidden; /* Prevents any overflow */

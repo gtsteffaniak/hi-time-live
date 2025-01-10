@@ -217,7 +217,6 @@ async function waitForCandidates(id) {
 
 async function handleOffer(msg) {
     let id = msg.userId
-    if 
     console.log("handling offer from", msg.userId)
     const offerDescription = new RTCSessionDescription({ "type": "offer", "sdp": msg.offer })
     await pcs[id].setRemoteDescription(offerDescription);
@@ -317,12 +316,16 @@ function startSSE() {
 
 async function eventRouter(msg) {
     switch (msg.eventType) {
-        case "newUser","newOffer":
-            newWebRTC(msg.userId,msg)
+        case "newUser":
+            newWebRTC(msg.userId)
             break
         case "acknowledge":
             startLoading(33, 100);
             updateStatusText("Waiting on others to join")
+            break
+        case "newOffer":
+            console.log("newOffer:", msg.userId)
+            newWebRTC(msg.userId, msg)
             break
         case "removedUser": handleClose(msg); break
         case "answer": handleAnswer(msg); break
