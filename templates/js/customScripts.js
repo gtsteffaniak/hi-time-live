@@ -1,24 +1,48 @@
 const code = "{{ .code }}"
+let username = ""
+
+// Function to check for text content
+function checkForTextContent() {
+  // Replace 'your-text-element-id' with the ID of the element containing the text
+  const button = document.getElementById('start-button');
+
+  // Event listener for the input field
+  nameInput.addEventListener('input', () => {
+    username = nameInput.value
+    // Check if the input field contains any non-whitespace characters
+    if (nameInput.value.trim().length > 0) {
+      button.style.display = 'block'; // Show the button container
+    } else {
+      button.style.display = 'none'; // Hide the button container
+    }
+  });
+}
+
+// Call this function whenever the text might change
+checkForTextContent();
 
 function startSession() {
+  const userIdCode = crypto.randomUUID().split("-")[0];
+  const userId = `${username}-${userIdCode}`
+  console.log(`local connection id ${userId}`)
   const privacyModal = document.getElementById('privacyModal');
   const loadingModal = document.getElementById('loadingModal');
   const localVideo = document.getElementById('localVideo');
   privacyModal.classList.add("hidden")
   loadingModal.classList.remove("hidden")
   localVideo.classList.remove("hidden")
-  startLocalVideo()
+  startLocalVideo(userId)
   startLoading(0, 33);
 };
 
 function copyToClipboard(text) {
   navigator.clipboard.writeText(text)
-      .then(() => {
-          console.log("Copied to clipboard: " + text);
-      })
-      .catch(err => {
-          console.error("Failed to copy text: ", err);
-      });
+    .then(() => {
+      console.log("Copied to clipboard: " + text);
+    })
+    .catch(err => {
+      console.error("Failed to copy text: ", err);
+    });
 }
 
 function goToRoom() {

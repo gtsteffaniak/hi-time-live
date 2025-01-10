@@ -48,6 +48,5 @@ While I was happy to see it has broad compatibility across browsers, I found tha
 
 ![Chrome](https://raw.githubusercontent.com/alrra/browser-logos/master/src/chrome/chrome_48x48.png) | ![Firefox](https://raw.githubusercontent.com/alrra/browser-logos/master/src/firefox/firefox_48x48.png) | ![IE](https://raw.githubusercontent.com/alrra/browser-logos/master/src/edge/edge_48x48.png) | ![Opera](https://raw.githubusercontent.com/alrra/browser-logos/master/src/opera/opera_48x48.png) | ![Safari](https://raw.githubusercontent.com/alrra/browser-logos/master/src/safari/safari_48x48.png) 
 --- | --- | --- | --- | --- |
- ✅ |  ✅ | ✅ | ✅ | ❌ |
+ ✅ |  ✅ | ✅ | ✅ | ✅ |
 
-Safari is the only exception, I believe it could work based on the Safari version. I used `17.4.1` on macOS, the video never shows up on either side. 

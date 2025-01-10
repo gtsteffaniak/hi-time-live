@@ -23,13 +23,12 @@ const configuration = {
         { 'urls': 'stun:stun.voipstunt.com' },
     ]
 };
-const userId = crypto.randomUUID().split("-")[0];
+let localUserId = "notset"
 let aliveUsers = {}
 let pcs = {}
 const localCandidates = [];
 let localVideo = document.getElementById('localVideo');
 
-console.log("local connection id:", userId)
 
 function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -51,7 +50,8 @@ async function createRemoteVideoStream(id) {
     const videoOverlay = document.createElement('div');
     videoOverlay.id = id + '-video-overlay';
     videoOverlay.classList.add("video-overlay")
-    videoOverlay.innerHTML = "<p>" + id + "</p>"
+    const nameID = id.split("-")[0]
+    videoOverlay.innerHTML = "<p>" + nameID + "</p>"
 
     // Append the video element to the container div
     containerDiv.appendChild(videoElement);
@@ -72,13 +72,13 @@ async function createRemoteVideoStream(id) {
         console.log("Attaching remote view: ", id, "to stream:", remoteStream);
 
         // Attach the stream to the video element
-        attachMediaStream(remoteVideo, remoteStream);
+        attachMediaStream(remoteVideo, remoteStream, id);
     };
 
 }
 
 // Helper function to attach media stream to the video element
-function attachMediaStream(video, stream,id) {
+function attachMediaStream(video, stream, id) {
     try {
         // Use Safari-friendly attachment logic
         video.srcObject = stream;
@@ -107,10 +107,21 @@ function attachMediaStream(video, stream,id) {
                 });
             }
         });
+        updateContainerClass();
     } catch (error) {
         console.error("Error attaching media stream:", error);
     }
 }
+
+function updateContainerClass() {
+    const videoContainer = document.getElementById('video-container');
+    const childrenCount = videoContainer.children.length;
+    if (childrenCount === 4) {
+        videoContainer.classList.add('four');
+        return;
+    }
+}
+
 
 function removeRemoteVideoStream(id) {
     const containerDiv = document.getElementById(id + '-container');
@@ -229,7 +240,7 @@ async function handleOffer(msg) {
     // Set local description with the answer
     const responseMessage = {
         eventType: "answer",
-        userId: userId,
+        userId: localUserId,
         forUser: id,
         answer: filteredSDP,
         candidates: JSON.stringify(localCandidates),
@@ -251,7 +262,7 @@ async function handleCreateOffer(id) {
     // Set local description with the answer
     const responseMessage = {
         eventType: "newOffer",
-        userId: userId,
+        userId: localUserId,
         offer: myoffer.sdp,
         candidates: JSON.stringify(localCandidates),
         code: "{{ .code }}",
@@ -294,7 +305,7 @@ async function newWebRTC(id, msg = {}) {
 }
 
 function startSSE() {
-    const eventSrc = new EventSource(`/events?userId=${userId}&code={{ .code }}`);
+    const eventSrc = new EventSource(`/events?userId=${localUserId}&code={{ .code }}`);
 
     eventSrc.onopen = () => {
         console.log("SSE connection established.");
@@ -333,7 +344,8 @@ async function eventRouter(msg) {
     }
 }
 
-async function startLocalVideo() {
+async function startLocalVideo(userId) {
+    localUserId = userId
     localVideo = document.getElementById('localVideo');
     localStream = await navigator.mediaDevices.getUserMedia(videoConstraints);
     localVideo.srcObject = localStream;
