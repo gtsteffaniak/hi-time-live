@@ -2,6 +2,7 @@ package routes
 
 import (
 	"fmt"
+	"net/http"
 	"regexp"
 	"slices"
 	"sync"
@@ -53,7 +54,8 @@ func validCode(code string) bool {
 	return valid
 }
 
-func (r *room) removeUserFromRoom(id string) {
+func removeUserFromRoom(code string, id string) {
+	r := getRoom(code)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	withoutUser := []string{}
@@ -63,4 +65,20 @@ func (r *room) removeUserFromRoom(id string) {
 		}
 	}
 	r.users = withoutUser
+}
+
+func roomHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	data := map[string]interface{}{}
+	data["code"] = id
+	data["privacyModal"] = map[string]string{
+		"modalType": "privacy",
+		"hidden":    "",
+		"code":      id,
+	}
+	if !validCode(id) {
+		templateRenderer.Render(w, "invalidRoom.html", data)
+	} else {
+		templateRenderer.Render(w, "room.html", data)
+	}
 }
