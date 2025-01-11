@@ -3,6 +3,7 @@ package routes
 import (
 	"fmt"
 	"html/template"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -41,7 +42,10 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		"hidden":    "hidden",
 		"code":      id,
 	}
-	templateRenderer.Render(w, "main.html", data)
+	err := templateRenderer.Render(w, "main.html", data)
+	if err != nil {
+		log.Println("could not render main.html template", http.StatusInternalServerError)
+	}
 }
 
 func FindFiles(rootPath string) ([]string, error) {

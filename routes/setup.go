@@ -19,7 +19,10 @@ func StartRouter(devMode bool, port int) {
 		templateDir: "templates",
 		devMode:     devMode,
 	}
-	templateRenderer.loadTemplates()
+	err := templateRenderer.loadTemplates()
+	if err != nil {
+		log.Fatalf("could not load templates: %v", err)
+	}
 
 	// Attempt to load the TLS certificate and key
 	cer, err := tls.LoadX509KeyPair("cert.pem", "key.pem")

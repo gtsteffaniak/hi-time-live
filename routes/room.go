@@ -2,6 +2,7 @@ package routes
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"slices"
@@ -77,8 +78,15 @@ func roomHandler(w http.ResponseWriter, r *http.Request) {
 		"code":      id,
 	}
 	if !validCode(id) {
-		templateRenderer.Render(w, "invalidRoom.html", data)
+		err := templateRenderer.Render(w, "invalidRoom.html", data)
+		if err != nil {
+			log.Println("could not render invalidRoom.html template", http.StatusInternalServerError)
+		}
+
 	} else {
-		templateRenderer.Render(w, "room.html", data)
+		err := templateRenderer.Render(w, "room.html", data)
+		if err != nil {
+			log.Println("could not render room.html template", http.StatusInternalServerError)
+		}
 	}
 }
