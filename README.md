@@ -1,7 +1,7 @@
 # Hi time live
 
 <p align="center">
-  <img width="500" src="./site/static/img/hitime.png" title="Main logo">
+  <img width="500" src="./static/img/hitime.png" title="Main logo">
 </p>
 <p align="center">
     A free peer-2-peer WebRTC based video conferencing.
