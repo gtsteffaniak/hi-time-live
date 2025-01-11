@@ -2,6 +2,8 @@ package routes
 
 import (
 	"fmt"
+	"log"
+	"net/http"
 	"regexp"
 	"slices"
 	"sync"
@@ -53,7 +55,8 @@ func validCode(code string) bool {
 	return valid
 }
 
-func (r *room) removeUserFromRoom(id string) {
+func removeUserFromRoom(code string, id string) {
+	r := getRoom(code)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	withoutUser := []string{}
@@ -63,4 +66,27 @@ func (r *room) removeUserFromRoom(id string) {
 		}
 	}
 	r.users = withoutUser
+}
+
+func roomHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	data := map[string]interface{}{}
+	data["code"] = id
+	data["privacyModal"] = map[string]string{
+		"modalType": "privacy",
+		"hidden":    "",
+		"code":      id,
+	}
+	if !validCode(id) {
+		err := templateRenderer.Render(w, "invalidRoom.html", data)
+		if err != nil {
+			log.Println("could not render invalidRoom.html template", http.StatusInternalServerError)
+		}
+
+	} else {
+		err := templateRenderer.Render(w, "room.html", data)
+		if err != nil {
+			log.Println("could not render room.html template", http.StatusInternalServerError)
+		}
+	}
 }

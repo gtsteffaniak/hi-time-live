@@ -1,7 +1,7 @@
 # Hi time live
 
 <p align="center">
-  <img width="500" src="./site/static/img/hitime.png" title="Main logo">
+  <img width="500" src="./static/img/hitime.png" title="Main logo">
 </p>
 <p align="center">
     A free peer-2-peer WebRTC based video conferencing.
@@ -12,8 +12,9 @@
 This video conferencing software combines three technologies to create an all-in-one web application:
 
 1. WebRTC with html/JavaScript in the client-side browser to handle the user interface.
-2. WebSocket communication channel between browser and signaling server.
-3. Signaling server to facilitate the connection information, written in go.
+2. Continuous Server Sent Event communication channel for realtime updates.
+3. rest http PUT event endpoint for client updates.
+4. Signaling server to facilitate the connection information, written in go.
 
 <p align="center">
   <img width="500" src="https://lh3.googleusercontent.com/tn1h7nq5-ANzEyuwISMNLqFngijegUKAAfIkqoy76lg3ewxnI2wDGBtA29vIgp96CyivhVOEuh_OkX7jjAc_e4r-_m5LpZStO8Bxc3VFvOL-XVEB51mnOJSzrnXwzpHGE-DFsq6w" title="WebRTC">
@@ -47,6 +48,5 @@ While I was happy to see it has broad compatibility across browsers, I found tha
 
 ![Chrome](https://raw.githubusercontent.com/alrra/browser-logos/master/src/chrome/chrome_48x48.png) | ![Firefox](https://raw.githubusercontent.com/alrra/browser-logos/master/src/firefox/firefox_48x48.png) | ![IE](https://raw.githubusercontent.com/alrra/browser-logos/master/src/edge/edge_48x48.png) | ![Opera](https://raw.githubusercontent.com/alrra/browser-logos/master/src/opera/opera_48x48.png) | ![Safari](https://raw.githubusercontent.com/alrra/browser-logos/master/src/safari/safari_48x48.png) 
 --- | --- | --- | --- | --- |
- ✅ |  ✅ | ✅ | ✅ | ❌ |
+ ✅ |  ✅ | ✅ | ✅ | ✅ |
 
-Safari is the only exception, I believe it could work based on the Safari version. I used `17.4.1` on macOS, the video never shows up on either side. 

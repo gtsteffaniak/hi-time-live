@@ -1,13 +1,6 @@
-/*
- *  Copyright (c) 2021 The WebRTC project authors. All Rights Reserved.
- *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree.
- */
-
-let ws;
+let eventSrc;
 let localStream;
+
 const videoConstraints = {
     audio: true,
     video: {
@@ -30,13 +23,12 @@ const configuration = {
         { 'urls': 'stun:stun.voipstunt.com' },
     ]
 };
-const userId = crypto.randomUUID().split("-")[0];
+let localUserId = "notset"
 let aliveUsers = {}
 let pcs = {}
 const localCandidates = [];
 let localVideo = document.getElementById('localVideo');
 
-console.log("local connection id:", userId)
 
 function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -51,13 +43,15 @@ async function createRemoteVideoStream(id) {
     // Create the video element
     const videoElement = document.createElement('video');
     videoElement.id = id + '-remoteVideo';
-    videoElement.muted = true;
+    videoElement.muted = true; // for safari to autoplay
+    videoElement.autoplay = true;
     videoElement.playsinline = true;
 
     const videoOverlay = document.createElement('div');
     videoOverlay.id = id + '-video-overlay';
     videoOverlay.classList.add("video-overlay")
-    videoOverlay.innerHTML = "<p>"+id+"</p>"
+    const nameID = id.split("-")[0]
+    videoOverlay.innerHTML = "<p>" + nameID + "</p>"
 
     // Append the video element to the container div
     containerDiv.appendChild(videoElement);
@@ -69,43 +63,74 @@ async function createRemoteVideoStream(id) {
 
     // Set the ontrack event handler for the peer connection
     pcs[id].ontrack = (event) => {
-        let remoteVideo = document.getElementById(videoElement.id);
-        if (remoteVideo.srcObject) return;
-        console.log("attaching remote view");
-        remoteVideo.srcObject = event.streams[0];
+        console.log("ontrack event:", id,event);
+        const remoteStream = event.streams[0]; // Get the remote stream
+        const remoteVideo = document.getElementById(videoElement.id);
+
+        if (remoteVideo.srcObject) return; // Prevent redundant attachment
+
+        console.log("Attaching remote view: ", id, "to stream:", remoteStream);
+
+        // Attach the stream to the video element
+        attachMediaStream(remoteVideo, remoteStream, id);
     };
-    updateContainerClass();
+
 }
 
+// Helper function to attach media stream to the video element
+function attachMediaStream(video, stream, id) {
+    try {
+        // Use Safari-friendly attachment logic
+        video.srcObject = stream;
+        video.addEventListener("loadedmetadata", async () => {
+            try {
+                await video.play(); // Ensure video playback starts
+                console.log("Remote video is playing for:", id);
+                video.muted = false; // Unmute after video starts
+            } catch (playError) {
+                console.error("Error playing the remote video:", playError);
+
+                // Optional: Add a fallback for user interaction
+                const overlay = document.getElementById(id + '-video-overlay');
+                overlay.innerHTML += "<p>Click to play</p>";
+                overlay.style.cursor = "pointer";
+
+                overlay.addEventListener("click", async () => {
+                    try {
+                        overlay.style.display = "none"; // Hide the overlay
+                        await video.play();
+                        console.log("Remote video resumed after user interaction:", id);
+                        video.muted = false;
+                    } catch (interactionError) {
+                        console.error("Error playing the video after user interaction:", interactionError);
+                    }
+                });
+            }
+        });
+        updateContainerClass();
+    } catch (error) {
+        console.error("Error attaching media stream:", error);
+    }
+}
 
 function updateContainerClass() {
     const videoContainer = document.getElementById('video-container');
     const childrenCount = videoContainer.children.length;
-
-    // Remove existing classes
-    videoContainer.classList.remove('single', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine');
-
-    // Add appropriate class
-    if (childrenCount === 1) {
-        videoContainer.classList.add('single');
-    } else if (childrenCount === 2) {
-        videoContainer.classList.add('two');
-    } else if (childrenCount === 3) {
-        videoContainer.classList.add('three');
-    } else if (childrenCount === 4) {
+    if (childrenCount > 0) {
+        videoContainer.classList.remove('hidden');
+        if (window.innerWidth > 800) {
+            videoContainer.classList.add("padding-bottom")
+            showControls()
+        }
+    } else {
+        videoContainer.classList.add('hidden');
+    }
+    if (childrenCount === 4) {
         videoContainer.classList.add('four');
-    } else if (childrenCount === 5) {
-        videoContainer.classList.add('five');
-    } else if (childrenCount === 6) {
-        videoContainer.classList.add('six');
-    } else if (childrenCount === 7) {
-        videoContainer.classList.add('seven');
-    } else if (childrenCount === 8) {
-        videoContainer.classList.add('eight');
-    } else if (childrenCount === 9) {
-        videoContainer.classList.add('nine');
+        return;
     }
 }
+
 
 function removeRemoteVideoStream(id) {
     const containerDiv = document.getElementById(id + '-container');
@@ -193,7 +218,6 @@ async function waitForCandidates(id) {
         localStream.getTracks().forEach((track) => pcs[id].addTrack(track, localStream));
 
     }
-
     let offer = await pcs[id].createOffer();
     const filteredSDP = filterCodecs(offer.sdp, allowedCodecs);
     offer.sdp = filteredSDP;
@@ -213,8 +237,8 @@ async function waitForCandidates(id) {
 
 async function handleOffer(msg) {
     let id = msg.userId
-    console.log("handling offer", msg.offer)
-    const offerDescription = new RTCSessionDescription({ "type": "offer", "sdp": msg.offer });
+    console.log("handling offer from", msg.userId)
+    const offerDescription = new RTCSessionDescription({ "type": "offer", "sdp": msg.offer })
     await pcs[id].setRemoteDescription(offerDescription);
     handleRemoteCandidates(msg)
 
@@ -225,15 +249,15 @@ async function handleOffer(msg) {
     // Set local description with the answer
     const responseMessage = {
         eventType: "answer",
-        userId: userId,
+        userId: localUserId,
         forUser: id,
         answer: filteredSDP,
         candidates: JSON.stringify(localCandidates),
         code: "{{ .code }}",
     }
-    console.log("sending answer", id)
+    console.log("sending answer to ", id)
     // Exchange the answer with the remote peer
-    ws.json(responseMessage)
+    sendEvent(responseMessage)
     loadingModal = document.getElementById('loadingModal');
     loadingModal.classList.add("hidden")
     await pcs[id].setLocalDescription(answer);
@@ -247,18 +271,31 @@ async function handleCreateOffer(id) {
     // Set local description with the answer
     const responseMessage = {
         eventType: "newOffer",
-        userId: userId,
+        userId: localUserId,
         offer: myoffer.sdp,
         candidates: JSON.stringify(localCandidates),
         code: "{{ .code }}",
     }
     console.log("sending offer to ", id)
+    sendEvent(responseMessage)
+}
+
+function sendEvent(msg) {
     // Exchange the answer with the remote peer
-    ws.json(responseMessage)
+    fetch("/event", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(msg)
+    }).then(response => console.log(response))
+        .catch(error => console.error('Fetch error:', error));
+
 }
 
 async function newWebRTC(id, msg = {}) {
-    if (id in pcs) {  
+    console.log("adding new user to pcs: ", id)
+    if (id in pcs) {
         console.log("skipping, user exists,", id)
         return
     }
@@ -266,34 +303,35 @@ async function newWebRTC(id, msg = {}) {
         pcs[id] = null
     }
     pcs[id] = await new RTCPeerConnection(configuration);
+    console.log("new user pcs: ", pcs[id])
+
     await waitForCandidates(id)
     if ('offer' in msg) {
-        console.log("handing with offer ", id)
         handleOffer(msg)
     } else {
-        console.log("handing without offer ", id)
         handleCreateOffer(id)
     }
 }
 
-function startwebsocket() {
-    var loc = window.location;
-    uri = 'wss://' + loc.host + '/ws';
-    ws = new WebSocket(uri)
-    ws.json = (obj) => ws.send(JSON.stringify(obj));
-    ws.onopen = function () {
-        const msg = {
-            eventType: "newUser",
-            userId: userId,
-            code: "{{ .code }}",
+function startSSE() {
+    const eventSrc = new EventSource(`/events?userId=${localUserId}&code={{ .code }}`);
+
+    eventSrc.onopen = () => {
+        console.log("SSE connection established.");
+    };
+
+    eventSrc.onerror = (err) => {
+        console.log("SSE error:", err);
+    };
+
+    eventSrc.onmessage = (event) => {
+        try {
+            const msg = JSON.parse(event.data);
+            eventRouter(msg);
+        } catch (err) {
+            console.log("Error parsing event data:", err);
         }
-        ws.json(msg);
-        updateStatusText("Waiting for connection")
-    }
-    ws.onmessage = function (evt) {
-        const msg = JSON.parse(evt.data)
-        eventRouter(msg)
-    }
+    };
 }
 
 async function eventRouter(msg) {
@@ -315,13 +353,14 @@ async function eventRouter(msg) {
     }
 }
 
-async function startLocalVideo() {
+async function startLocalVideo(userId) {
+    localUserId = userId
     localVideo = document.getElementById('localVideo');
     localStream = await navigator.mediaDevices.getUserMedia(videoConstraints);
     localVideo.srcObject = localStream;
     const controls = document.getElementById('controls')
     controls.classList.remove("hidden")
-    startwebsocket()
+    startSSE()
 }
 
 async function handleClose(msg) {
@@ -330,11 +369,11 @@ async function handleClose(msg) {
         pcs[msg.userId] = null;
     }
     removeRemoteVideoStream(msg.userId)
-    console.log("closed video of peer")
+    console.log("closed video of peer: ", msg.Id)
 }
 
 async function handleAnswer(msg) {
-    console.log(msg.userId, "handling answer", msg.answer)
+    console.log("handling answer from ", msg.userId)
     await pcs[msg.userId].setRemoteDescription({ "type": "answer", "sdp": msg.answer });
     handleRemoteCandidates(msg)
 
@@ -345,8 +384,7 @@ async function handleAnswer(msg) {
 
 async function handleRemoteCandidates(message) {
     let candidates = JSON.parse(message.candidates)
-    console.log("candidates from", message.userId)
-
+    console.log("candidates from ", message.userId)
     for (c in candidates) {
         await pcs[message["userId"]].addIceCandidate(candidates[c])
     }
@@ -357,5 +395,4 @@ async function handleCandidate(candidate) {
         console.log("new candidate")
         localCandidates.push(candidate)
     }
-
 }
