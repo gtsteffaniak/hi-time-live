@@ -101,8 +101,6 @@ func (t *TemplateRenderer) loadTemplates() error {
 			return err
 		}
 	} else {
-		staticFileServer = http.FileServer(http.FS(templateRenderer.staticAssets))
-
 		tempfiles, err = t.GetEmbededTemplates()
 		if err != nil {
 			return err
