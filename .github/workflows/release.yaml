@@ -22,7 +22,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT }}
           tag_name: ${{ steps.extract_branch.outputs.branch }}
           prerelease: false
           draft: false
