@@ -1,8 +1,10 @@
 
 build-docker:
 	go mod vendor && cd .. && \
-	go build --ldflags="-w -s -X github.com/gtsteffaniak/hi-time-live/routes.Version=v0.0.0-testing' .
 	docker build -t hi-time-live .
+
+build:
+	go build --ldflags="-w -s -X github.com/gtsteffaniak/hi-time-live/routes.Version=v0.0.0-testing" .
 
 run-docker:
 	docker run -p 9012:9012 hi-time-live

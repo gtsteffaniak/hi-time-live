@@ -2,12 +2,13 @@ package routes
 
 import (
 	"crypto/tls"
+	"embed"
 	"fmt"
 	"log"
 	"net/http"
 )
 
-func StartRouter(devMode bool, port int) {
+func StartRouter(devMode bool, port int, staticAssets embed.FS, templateAssets embed.FS) {
 	router := http.NewServeMux()
 	router.HandleFunc("GET /events", sseHandler)       // Server-Sent Events endpoint
 	router.HandleFunc("POST /event", postEventHandler) // Rest endpoint for client event responses
@@ -16,8 +17,10 @@ func StartRouter(devMode bool, port int) {
 	router.HandleFunc("/", indexHandler)
 	// Register custom template renderer
 	templateRenderer = &TemplateRenderer{
-		templateDir: "templates",
-		devMode:     devMode,
+		templateDir:    "templates",
+		devMode:        devMode,
+		templateAssets: templateAssets,
+		staticAssets:   staticAssets,
 	}
 	err := templateRenderer.loadTemplates()
 	if err != nil {
