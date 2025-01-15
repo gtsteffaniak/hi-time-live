@@ -6,7 +6,7 @@ builds:
   # Build configuration for darwin and linux
   - id: default
     ldflags: &ldflags
-      - -s -w -X --ldflags="-w -s -X github.com/gtsteffaniak/hi-time-live/routes.Version={{.Version}}"
+      - -s -w -X github.com/gtsteffaniak/hi-time-live/routes.Version={{.Version}}
     main: main.go
     binary: filebrowser
     goos:
