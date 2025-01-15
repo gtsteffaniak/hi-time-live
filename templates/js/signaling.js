@@ -50,7 +50,7 @@ async function createRemoteVideoStream(id) {
     const videoOverlay = document.createElement('div');
     videoOverlay.id = id + '-video-overlay';
     videoOverlay.classList.add("video-overlay")
-    const nameID = id.split("-")[0]
+    const nameID = id.split("__")[0]
     videoOverlay.innerHTML = "<p>" + nameID + "</p>"
 
     // Append the video element to the container div

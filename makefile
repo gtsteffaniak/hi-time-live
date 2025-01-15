@@ -1,6 +1,7 @@
 
 build-docker:
 	go mod vendor && cd .. && \
+	go build --ldflags="-w -s -X github.com/gtsteffaniak/hi-time-live/routes.Version=v0.0.0-testing' .
 	docker build -t hi-time-live .
 
 run-docker:
@@ -12,7 +13,7 @@ setup:
 	go run $(GOROOT)/src/crypto/tls/generate_cert.go --host localhost
 
 run:
-	go run . --dev
+	go run --ldflags="-w -s -X github.com/gtsteffaniak/hi-time-live/routes.Version=v0.0.0-testing" . --dev
 
 test:
 	go test -v --race ./...

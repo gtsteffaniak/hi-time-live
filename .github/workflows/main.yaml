@@ -56,6 +56,10 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Find latest beta tag
+        run: |
+          echo "LATEST_TAG=$(git describe --tags $(git rev-list --tags="v*" --max-count=1))" >> $GITHUB_ENV
+          echo "latest tag is $LATEST_TAG"
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
@@ -67,6 +71,8 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           file: ./Dockerfile
+          build-args: |
+            VERSION=${{ env.LATEST_TAG }}
           push: true
           tags: 'gtstef/hitime:latest'
           labels: ${{ steps.meta.outputs.labels }}

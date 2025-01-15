@@ -1,8 +1,11 @@
 <div id="mainMenu" class="modal">
   <div class="menu-container">
+    {{ template "components/version.html" .version }}
+
     <div style="display:flex;justify-content: center;">
       <img width="250px" class="logo" src="img/hitime.png" alt="Hi Time Live">
     </div>
+
     <nav class="menu">
       <a href="room?id={{ .code }}" class="menu-item">
         <span class="material-symbols-outlined">
@@ -39,5 +42,6 @@
         Support
       </a>
     </div>
+
   </div>
 </div>

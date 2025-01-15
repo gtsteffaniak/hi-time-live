@@ -13,7 +13,10 @@ import (
 	"github.com/google/uuid"
 )
 
-var templateRenderer *TemplateRenderer
+var (
+	templateRenderer *TemplateRenderer
+	Version          string
+)
 
 // TemplateRenderer is a custom html/template renderer for Echo framework
 type TemplateRenderer struct {
@@ -24,6 +27,11 @@ type TemplateRenderer struct {
 
 // Render renders a template document with headers and data
 func (t *TemplateRenderer) Render(w http.ResponseWriter, name string, data interface{}) error {
+	if t.devMode {
+		if err := t.loadTemplates(); err != nil {
+			slog.Error("unable to parse templates", "error", err)
+		}
+	}
 	// Set headers
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
 	w.Header().Set("Pragma", "no-cache")
@@ -36,6 +44,8 @@ func (t *TemplateRenderer) Render(w http.ResponseWriter, name string, data inter
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{}
 	id := uuid.New().String()
+	fmt.Println("version", Version)
+	data["version"] = Version
 	data["code"] = id
 	data["joinModal"] = map[string]string{
 		"modalType": "join",
