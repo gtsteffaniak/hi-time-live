@@ -5,7 +5,7 @@ let username = ""
 function checkForTextContent() {
   // Replace 'your-text-element-id' with the ID of the element containing the text
   const button = document.getElementById('start-button');
-
+  const nameInput = document.getElementById('nameInput');
   // Event listener for the input field
   nameInput.addEventListener('input', () => {
     username = nameInput.value
@@ -29,7 +29,7 @@ checkForTextContent();
 
 function startSession() {
   const userIdCode = crypto.randomUUID().split("-")[0];
-  const userId = `${username}-${userIdCode}`
+  const userId = `${username}__${userIdCode}`
   console.log(`local connection id ${userId}`)
   const privacyModal = document.getElementById('privacyModal');
   const loadingModal = document.getElementById('loadingModal');

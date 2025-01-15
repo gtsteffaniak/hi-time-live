@@ -65,6 +65,8 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          build-args: |
+            VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
           file: ./Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}

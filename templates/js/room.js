@@ -9,10 +9,3 @@ function safariContinue() {
     let modal = document.getElementById('safariModal');
     modal.classList.add("hidden")
 }
-
-if (isSafari()) {
-    let modal = document.getElementById('safariModal');
-    modal.classList.remove("hidden")
-    const privacyModal = document.getElementById('privacyModal');
-    privacyModal.classList.add("hidden")
-}
