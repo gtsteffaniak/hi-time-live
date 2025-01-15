@@ -19,7 +19,6 @@ import (
 var (
 	templateRenderer *TemplateRenderer
 	Version          string
-	staticFileServer http.Handler
 )
 
 // TemplateRenderer is a custom html/template renderer for Echo framework
