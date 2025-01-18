@@ -1,11 +1,9 @@
-FROM golang:1.22-alpine
+FROM golang:1.23-alpine
 ARG VERSION
 WORKDIR /app
 COPY ["./","./"]
 WORKDIR /app/
 RUN go build -ldflags="-w -s -X 'github.com/gtsteffaniak/hi-time-live/routes.Version=${VERSION}'" .
-
-RUN go build -ldflags='-w -s' .
 
 FROM scratch
 WORKDIR /app
