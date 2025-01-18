@@ -36,7 +36,7 @@ builds:
         - upx {{ .Path }}  # Compress the binary with UPX
 
   # Build configuration for windows without arm & upx
-  - id: windows
+  - id: macos
     ldflags: *ldflags
     main: main.go
     binary: filebrowser
