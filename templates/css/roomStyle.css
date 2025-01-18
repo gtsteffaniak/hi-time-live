@@ -61,7 +61,7 @@
 /* Main container spans the full viewport */
 #video-container {
   display: grid;
-  grid-template-columns: repeat(1, 1fr) !important; /* Two columns */
+  grid-template-columns: repeat(1, 1fr); /* one columns */
   gap: 1em; /* Spacing between grid items */
   box-sizing: border-box; /* Includes padding/border in dimensions */
   overflow: hidden; /* Prevents any overflow */
@@ -76,22 +76,12 @@
   padding-bottom: 5em !important;
 }
 
-.four {
+.one {
+  grid-template-columns: repeat(1, 1fr) !important; /* One column */
+}
+
+.two {
   grid-template-columns: repeat(2, 1fr) !important; /* Two columns */
-}
-
-/* Medium screens - 2x2 layout */
-@media (min-width: 801px) and (max-width: 1200px) {
-  #video-container {
-    grid-template-columns: repeat(2, 1fr); /* Two columns */
-  }
-}
-
-/* Large screens - 3x1 or 3x2 layout */
-@media (min-width: 1201px) {
-  #video-container {
-    grid-template-columns: repeat(3, 1fr); /* Three columns */
-  }
 }
 
 /* Styling for each video container */

@@ -78,35 +78,18 @@ async function createRemoteVideoStream(id) {
 }
 
 // Helper function to attach media stream to the video element
-function attachMediaStream(video, stream, id) {
+async function attachMediaStream(video, stream, id) {
     try {
+        const overlay = document.getElementById(id + '-video-overlay');
         // Use Safari-friendly attachment logic
         video.srcObject = stream;
-        video.addEventListener("loadedmetadata", async () => {
-            try {
-                await video.play(); // Ensure video playback starts
-                console.log("Remote video is playing for:", id);
-                video.muted = false; // Unmute after video starts
-            } catch (playError) {
-                console.error("Error playing the remote video:", playError);
-
-                // Optional: Add a fallback for user interaction
-                const overlay = document.getElementById(id + '-video-overlay');
-                overlay.innerHTML += "<p>Click to play</p>";
-                overlay.style.cursor = "pointer";
-
-                overlay.addEventListener("click", async () => {
-                    try {
-                        overlay.style.display = "none"; // Hide the overlay
-                        await video.play();
-                        console.log("Remote video resumed after user interaction:", id);
-                        video.muted = false;
-                    } catch (interactionError) {
-                        console.error("Error playing the video after user interaction:", interactionError);
-                    }
-                });
-            }
-        });
+        try {
+            await video.play(); // Ensure video playback starts
+            console.log("Remote video is playing for:", id);
+            video.muted = false; // Unmute after video starts
+        } catch (playError) {
+            console.error("Error playing the remote video:", playError);
+        }
         updateContainerClass();
     } catch (error) {
         console.error("Error attaching media stream:", error);
@@ -116,6 +99,9 @@ function attachMediaStream(video, stream, id) {
 function updateContainerClass() {
     const videoContainer = document.getElementById('video-container');
     const childrenCount = videoContainer.children.length;
+    videoContainer.classList.remove('one');
+    videoContainer.classList.remove('two');
+
     if (childrenCount > 0) {
         videoContainer.classList.remove('hidden');
         if (window.innerWidth > 800) {
@@ -125,12 +111,25 @@ function updateContainerClass() {
     } else {
         videoContainer.classList.add('hidden');
     }
-    if (childrenCount === 4) {
-        videoContainer.classList.add('four');
+    if (childrenCount === 1) {
+        videoContainer.classList.add('one');
+        return;
+    }
+    if (childrenCount === 2) {
+        if (window.innerWidth > 800) {
+            videoContainer.classList.add('two');
+        } else {
+            videoContainer.classList.add('one');
+        }
+    }
+    if (childrenCount === 4 || childrenCount === 3) {
+        videoContainer.classList.add('two');
         return;
     }
 }
 
+
+window.addEventListener("resize", updateContainerClass);
 
 function removeRemoteVideoStream(id) {
     const containerDiv = document.getElementById(id + '-container');
