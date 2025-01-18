@@ -4,7 +4,7 @@
   <img width="500" src="./static/img/hitime.png" title="Main logo">
 </p>
 <p align="center">
-    A free peer-2-peer WebRTC based video conferencing.
+    A free peer-2-peer WebRTC based video chat site.
 </p>
 
 ## What is it?
@@ -29,7 +29,7 @@ Disadvantages:
 
 - Higher bandwidth and CPU usage, since the client must process more video streams from each peer.
 - Fewer centralized features, such as effects or controls.
-- Requires complicated and somewhat error-prone communication between clients, each other, and the backend. 
+- Requires complicated and somewhat error-prone communication between clients, each other, and the backend.
 
 ## How to use it
 
@@ -43,7 +43,7 @@ Note: The frontend features require an HTTPS connection, so any build should be 
 
 WebRTC has broad browser support
 
-![Chrome](https://raw.githubusercontent.com/alrra/browser-logos/master/src/chrome/chrome_48x48.png) | ![Firefox](https://raw.githubusercontent.com/alrra/browser-logos/master/src/firefox/firefox_48x48.png) | ![IE](https://raw.githubusercontent.com/alrra/browser-logos/master/src/edge/edge_48x48.png) | ![Opera](https://raw.githubusercontent.com/alrra/browser-logos/master/src/opera/opera_48x48.png) | ![Safari](https://raw.githubusercontent.com/alrra/browser-logos/master/src/safari/safari_48x48.png) 
+![Chrome](https://raw.githubusercontent.com/alrra/browser-logos/master/src/chrome/chrome_48x48.png) | ![Firefox](https://raw.githubusercontent.com/alrra/browser-logos/master/src/firefox/firefox_48x48.png) | ![IE](https://raw.githubusercontent.com/alrra/browser-logos/master/src/edge/edge_48x48.png) | ![Opera](https://raw.githubusercontent.com/alrra/browser-logos/master/src/opera/opera_48x48.png) | ![Safari](https://raw.githubusercontent.com/alrra/browser-logos/master/src/safari/safari_48x48.png)
 --- | --- | --- | --- | --- |
  ✅ |  ✅ | ✅ | ✅ | ✅ |
 
