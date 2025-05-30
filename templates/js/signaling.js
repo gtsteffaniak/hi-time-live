@@ -126,7 +126,7 @@ function removeRemoteVideoStream(remoteUserId) {
     updateContainerClass();
     const videoContainer = document.getElementById('video-container');
     if (videoContainer && videoContainer.querySelectorAll('.remote-views').length === 0) {
-        if (typeof updateStatusText === 'function') updateStatusText("Waiting on others to join");
+        updateStatusText("Waiting on others to join");
         const loadingModal = document.getElementById('loadingModal');
         if (loadingModal) loadingModal.classList.remove("hidden");
     }
@@ -186,7 +186,7 @@ async function waitForIceCandidates(pc, specificLocalCandidates, remoteUserId) {
     const checkInterval = 250;
     let waitedTime = 0;
     console.log(`Starting ICE candidate gathering for ${remoteUserId} (local candidates for this peer). Max wait: ${maxWaitTime/1000}s. PC signalingState: ${pc.signalingState}, ICE gathering state: ${pc.iceGatheringState}`);
-
+    updateStatusText("Gathering network information")
     while (waitedTime < maxWaitTime) {
         if (pc.iceGatheringState === 'complete') {
             console.log(`ICE gathering reported 'complete' for ${remoteUserId} after ${waitedTime}ms. Candidates collected: ${specificLocalCandidates.length}`);
@@ -310,7 +310,7 @@ function startSSE() {
     // Use "{{ .code }}" directly as it will be processed by Go templates if this .js file is a template
     const roomCode = "{{ .code }}"; 
 
-    if (!roomCode ) { // Check if it was NOT replaced
+    if (!roomCode) { // Check if it was NOT replaced
         console.error("Room code was not replaced by template. Cannot start SSE. Ensure JS is served as Go template.");
         alert("Error: Application configuration issue (room ID). Cannot connect.");
         return;
@@ -341,8 +341,8 @@ async function eventRouter(msg) {
             break;
         case "acknowledge": 
             console.log("SSE connection acknowledged by server.");
-            if (typeof startLoading === 'function') startLoading(33,100); // From original code
-            if (typeof updateStatusText === 'function') updateStatusText("Waiting on others to join"); // From original
+            startLoading(33, 100);
+            updateStatusText("Waiting on others to join")
             break;
         case "newOffer": 
             if (msg.userId !== localUserId) {

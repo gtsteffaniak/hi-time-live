@@ -186,7 +186,6 @@ func sendMessageToUser(targetUserId string, message eventMessage) {
 		if conn.userId == targetUserId {
 			select {
 			case conn.messageCh <- message:
-				fmt.Printf("  Queued message type '%s' for userId: %s (connInstanceId: %s)\n", message.EventType, targetUserId, conn.connInstanceId)
 				sent = true
 			default:
 				// This might happen if the user's message channel is full.
