@@ -1,0 +1,26 @@
+FROM ghcr.io/gtsteffaniak/playwright-base:latest
+
+# The slim base ships no CA bundle; go mod download needs it for TLS.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# The suite launches the app itself (playwright webServer runs `go run`), so
+# the image needs the Go toolchain next to the preinstalled node + browsers.
+COPY --from=golang:1.24 /usr/local/go /usr/local/go
+ENV PATH=/usr/local/go/bin:$PATH
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+
+# npm deps + browsers cache independently of source changes; package-lock pins
+# @playwright/test, and `playwright install` resolves the matching builds.
+COPY tests/e2e/package.json tests/e2e/package-lock.json tests/e2e/
+RUN cd tests/e2e && npm ci && npx playwright install --with-deps chromium firefox
+
+COPY . .
+RUN go build ./...
+
+WORKDIR /app/tests/e2e
+ENV CI=true
+RUN npx tsc --noEmit && npx playwright test
