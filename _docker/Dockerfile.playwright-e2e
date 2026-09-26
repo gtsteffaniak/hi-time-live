@@ -28,3 +28,6 @@ WORKDIR /app/tests/e2e
 ENV CI=true
 RUN tsc --noEmit -p tsconfig.json \
     && node /app/frontend/node_modules/@playwright/test/cli.js test
+
+## don't export layers
+FROM scratch
