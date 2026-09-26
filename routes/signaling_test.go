@@ -287,3 +287,49 @@ func TestMediaStateBroadcastsToOthers(t *testing.T) {
 	}
 	bob.expectSilence(200 * time.Millisecond)
 }
+
+// Repeated join/leave cycles must leave no residue: rooms are deleted when
+// empty and every closed stream unregisters its connection, so neither map can
+// grow without bound on a long-running server.
+func TestJoinLeaveChurnDoesNotGrowMaps(t *testing.T) {
+	server := newTestServer(t)
+
+	for i := 0; i < 50; i++ {
+		code := newCode(t)
+		alice := connectSSE(t, server, code, "alice")
+		bob := connectSSE(t, server, code, "bob")
+		alice.expect("newUser")
+		bob.disconnect()
+		alice.expect("removedUser")
+		alice.disconnect()
+	}
+
+	// Disconnect cleanup runs in the SSE handler's defer, so it can still be in
+	// flight the moment the client side reports closed — give it a beat.
+	deadline := time.Now().Add(eventTimeout)
+	for {
+		connLock.Lock()
+		remaining := len(connections)
+		connLock.Unlock()
+		roomLock.Lock()
+		remainingRooms := len(rooms)
+		roomLock.Unlock()
+		if remaining == 0 && remainingRooms == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			roomLock.Lock()
+			var codes []string
+			for c := range rooms {
+				codes = append(codes, c)
+			}
+			roomLock.Unlock()
+			membership := map[string][]string{}
+			for _, c := range codes {
+				membership[c] = roomUsers(c)
+			}
+			t.Fatalf("leaked state: %d connections, %d rooms still registered: %v", remaining, remainingRooms, membership)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}

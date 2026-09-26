@@ -1,13 +1,15 @@
-import { chromium, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { chromium, firefox, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { MEDIA, type MediaName, type PeerMedia } from './media.js';
 
 export interface PeerOptions {
   /** display name typed into the join modal; also the prefix of the signalling user id */
   name: string;
-  /** which deterministic fake camera/microphone this peer publishes */
+  /** which deterministic fake camera/microphone this peer publishes; ignored for firefox, which uses its built-in fake streams */
   media: MediaName;
   baseURL: string;
   headless?: boolean;
+  /** browser engine; firefox peers get generic fake media via prefs since the per-file capture flags are chromium-only */
+  engine?: 'chromium' | 'firefox';
 }
 
 /**
@@ -49,20 +51,36 @@ export class Peer {
 
   static async launch(opts: PeerOptions): Promise<Peer> {
     const peer = new Peer(opts);
-    peer.browser = await chromium.launch({
-      headless: opts.headless ?? true,
-      args: [
-        '--use-fake-device-for-media-stream',
-        '--use-fake-ui-for-media-stream',
-        `--use-file-for-fake-video-capture=${peer.media.videoFile}`,
-        `--use-file-for-fake-audio-capture=${peer.media.audioFile}`,
-        '--autoplay-policy=no-user-gesture-required',
-        '--disable-features=WebRtcHideLocalIpsWithMdns',
-      ],
-    });
+    // Firefox's resolver does not map `localhost` in every environment (WSL);
+    // 127.0.0.1 is still a secure context for getUserMedia.
+    const baseURL = opts.engine === 'firefox' ? opts.baseURL.replace('localhost', '127.0.0.1') : opts.baseURL;
+    if (opts.engine === 'firefox') {
+      peer.browser = await firefox.launch({
+        headless: opts.headless ?? true,
+        firefoxUserPrefs: {
+          'media.navigator.streams.fake': true,
+          'media.navigator.permission.disabled': true,
+          'permissions.default.camera': 1,
+          'permissions.default.microphone': 1,
+        },
+      });
+    } else {
+      peer.browser = await chromium.launch({
+        headless: opts.headless ?? true,
+        args: [
+          '--use-fake-device-for-media-stream',
+          '--use-fake-ui-for-media-stream',
+          `--use-file-for-fake-video-capture=${peer.media.videoFile}`,
+          `--use-file-for-fake-audio-capture=${peer.media.audioFile}`,
+          '--autoplay-policy=no-user-gesture-required',
+          '--disable-features=WebRtcHideLocalIpsWithMdns',
+        ],
+      });
+    }
     peer.context = await peer.browser.newContext({
-      baseURL: opts.baseURL,
-      permissions: ['camera', 'microphone'],
+      baseURL,
+      // context permissions are chromium-only; firefox is covered by the prefs above
+      ...(opts.engine === 'firefox' ? {} : { permissions: ['camera', 'microphone'] as const }),
     });
     peer.page = await peer.context.newPage();
     peer.page.on('console', (m) => peer.consoleLog.push(`[${m.type()}] ${m.text()}`));

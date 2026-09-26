@@ -71,7 +71,12 @@ func connectSSE(t *testing.T, server *httptest.Server, roomId, userId string) *s
 	if err != nil {
 		t.Fatalf("building SSE request: %v", err)
 	}
-	resp, err := server.Client().Do(req)
+	// A dedicated transport without keep-alives: the default pooled transport
+	// may silently retry an idempotent GET on a fresh socket when a reused
+	// connection is stale, which would register a second orphaned SSE stream
+	// server-side and defer the user's removal until its heartbeat fails.
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("connecting SSE: %v", err)
 	}

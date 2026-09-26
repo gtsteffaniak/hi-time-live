@@ -7,7 +7,9 @@ const videoConstraints = {
         facingMode: { ideal: 'user' }
     }
 }
-const allowedCodecs = ['VP9', 'H264'];
+// VP8 stays on the list for interop: Firefox builds without OpenH264 cannot
+// encode H264, and removing it would leave those peers sending no video at all.
+const allowedCodecs = ['VP9', 'H264', 'VP8'];
 const configuration = {
     'iceServers': [
         { 'urls': 'stun:stun.l.google.com:19302' },

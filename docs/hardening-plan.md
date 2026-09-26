@@ -61,15 +61,18 @@ rejoin, aborted signaling requests, unauthorized sender, mute, video disable.
 - **Controls stuck hidden.** `setControlsVisible(visible)` replaced the blind
   `fly-in` toggle; desktop shows controls unconditionally once a remote tile
   exists, and `#ctab` toggling only applies on narrow screens where it renders.
-- **Tests.** Two new specs automate what was only verified manually: duplicate
-  same-name tabs as a second participant, and mute/video-off propagation to
-  every remote peer (overlay label + flat audio energy + black tile).
+- **Tests.** Four additions: duplicate same-name tabs as a second participant;
+  mute/video-off propagation to *every* remote peer (overlay label + flat
+  audio energy + black tile); a Firefox<->Chromium smoke spec (fake media via
+  `media.navigator.streams.fake` prefs — this caught that filtering the codec
+  list to VP9/H264 left Firefox builds without OpenH264 sending no video, so
+  VP8 is back on the allowed list); and a Go churn test asserting the room and
+  connection maps return to empty after repeated join/leave cycles.
 
 ## Next steps (not in this change)
 
-1. **Test matrix.** Firefox peers (Playwright supports its own fake-media
-   prefs), simulated packet loss/renegotiation, and a soak test for room-map
-   growth.
+1. **Test matrix.** Simulated packet loss/renegotiation under throttle (e.g.
+   Playwright's connection emulation or a proxy), and longer soak runs.
 2. **Renegotiation.** Track add/remove mid-call (e.g. `switchMedia`) still has
    no signaling path; needs an offer/answer round guarded by the peer state
    machine.
