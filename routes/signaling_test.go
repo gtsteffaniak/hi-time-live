@@ -236,3 +236,54 @@ func TestSlowClientDoesNotBlockTheRoom(t *testing.T) {
 	}
 	alice.expect("answer")
 }
+
+func TestCandidateIsDeliveredOnlyToItsTarget(t *testing.T) {
+	server := newTestServer(t)
+	code := newCode(t)
+
+	alice := connectSSE(t, server, code, "alice")
+	bob := connectSSE(t, server, code, "bob")
+	carol := connectSSE(t, server, code, "carol")
+	defer alice.disconnect()
+	defer bob.disconnect()
+	defer carol.disconnect()
+
+	alice.expect("newUser")
+	alice.expect("newUser")
+	bob.expect("newUser")
+
+	resp := postEvent(t, server, eventMessage{EventType: "candidate", UserId: "alice", ForUser: "bob", Code: code, Candidate: `{"candidate":"c1"}`})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("candidate status = %d, want 200", resp.StatusCode)
+	}
+	if msg := bob.expect("candidate"); msg.UserId != "alice" {
+		t.Errorf("candidate came from %q, want alice", msg.UserId)
+	}
+	carol.expectSilence(200 * time.Millisecond)
+
+	if got := postEvent(t, server, eventMessage{EventType: "candidate", UserId: "alice", Code: code, Candidate: `{"candidate":"c1"}`}).StatusCode; got != http.StatusBadRequest {
+		t.Errorf("candidate without forUser status = %d, want 400", got)
+	}
+}
+
+// mediaState is room-scoped presence: it goes to everyone but the sender and
+// needs no forUser.
+func TestMediaStateBroadcastsToOthers(t *testing.T) {
+	server := newTestServer(t)
+	code := newCode(t)
+
+	alice := connectSSE(t, server, code, "alice")
+	bob := connectSSE(t, server, code, "bob")
+	defer alice.disconnect()
+	defer bob.disconnect()
+	alice.expect("newUser")
+
+	resp := postEvent(t, server, eventMessage{EventType: "mediaState", UserId: "bob", Code: code, MediaState: `{"audio":false,"video":true}`})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("mediaState status = %d, want 200", resp.StatusCode)
+	}
+	if msg := alice.expect("mediaState"); msg.UserId != "bob" {
+		t.Errorf("mediaState came from %q, want bob", msg.UserId)
+	}
+	bob.expectSilence(200 * time.Millisecond)
+}

@@ -41,29 +41,35 @@ Covered scenarios: two-peer call with media identity, peer leave, three-peer
 full mesh, leave from a three-way call, room isolation, invalid room, reload and
 rejoin, aborted signaling requests, unauthorized sender, mute, video disable.
 
+## Done after the initial PR
+
+- **Frontend state machine.** `templates/js/signaling.js` now keeps a `peers`
+  map of per-peer records (`pc`, `state`, `pendingCandidates`, `mediaState`)
+  with explicit `new -> offering|answering -> connected -> closed` transitions.
+  Duplicate offers and answers for a peer already past that stage are dropped
+  deliberately.
+- **Trickle ICE.** A `candidate` event type carries each candidate as it is
+  found; the gather wait is gone. Candidates that beat their offer are parked
+  in `earlyCandidates`/`pendingCandidates` until the remote description lands.
+- **SSE retry/backoff.** A `CLOSED` stream is restarted with exponential
+  backoff (1s doubling to 30s); `CONNECTING` errors report "reconnecting".
+  `mediaState` is re-broadcast on `onopen` so peers relearn mute state.
+- **Explicit media state.** A room-scoped `mediaState` event broadcasts
+  `{audio, video}`; remote overlays render "name (muted)" / "name (video off)".
+  Existing peers broadcast when a `newUser` joins so the joiner sees the
+  current state.
+- **Controls stuck hidden.** `setControlsVisible(visible)` replaced the blind
+  `fly-in` toggle; desktop shows controls unconditionally once a remote tile
+  exists, and `#ctab` toggling only applies on narrow screens where it renders.
+- **Tests.** Two new specs automate what was only verified manually: duplicate
+  same-name tabs as a second participant, and mute/video-off propagation to
+  every remote peer (overlay label + flat audio energy + black tile).
+
 ## Next steps (not in this change)
 
-1. **Frontend state machine.** `templates/js/signaling.js` now keeps per-peer
-   candidate lists and an ordered offer/answer path, but state is still implicit
-   in module-level `pcs`. A per-peer object
-   (`new` -> `offering`/`answering` -> `connected` -> `closed`) would make
-   late/duplicate messages droppable on purpose rather than by accident.
-2. **Trickle ICE.** Candidates are still batched into the offer/answer after a
-   gather wait. A `candidate` event type would cut setup latency and remove the
-   sleep.
-3. **Error surfacing.** `sendEvent` now logs non-2xx responses and updates the
-   status line, but there is no SSE retry/backoff — a dropped stream still
-   leaves the user silently disconnected.
-4. **Explicit media state.** Mute/disable only flips `track.enabled`, so the
-   remote side sees silence and black rather than a labelled state. A
-   `mediaState` event would let the UI show who is muted.
-5. **Controls can get stuck hidden on desktop.** `updateContainerClass` toggles
-   `fly-in` on every join/leave/resize, and `#ctab` is `display:none` above
-   800px, so once the controls toggle off there is no clickable way back —
-   observed during manual UI testing. Show them unconditionally on desktop or
-   make the toggle state a single source of truth.
-6. **Test matrix.** Firefox peers (Playwright supports its own fake-media
+1. **Test matrix.** Firefox peers (Playwright supports its own fake-media
    prefs), simulated packet loss/renegotiation, and a soak test for room-map
-   growth. Two further UI-level items already verified manually are good
-   candidates to automate: duplicate same-name tabs, and mute/video-off
-   propagation to a *second* remote peer.
+   growth.
+2. **Renegotiation.** Track add/remove mid-call (e.g. `switchMedia`) still has
+   no signaling path; needs an offer/answer round guarded by the peer state
+   machine.

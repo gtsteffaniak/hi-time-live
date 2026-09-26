@@ -86,11 +86,20 @@ function updateStatusText(message) {
   status.innerText = message
 }
 
-function showControls() {
+// setControlsVisible is the single source of truth for controls visibility:
+// callers say what they want instead of toggling, so repeated calls from
+// join/leave/resize cannot drift out of sync with what is on screen.
+function setControlsVisible(visible) {
   const ctab = document.getElementById('ctab');
   const controls = document.getElementById('controls');
   const videocontainer = document.getElementById('video-container');
-  videocontainer.classList.toggle("bottom-padding")
-  controls.classList.toggle("fly-in")
-  ctab.classList.toggle("fly-in")
+  videocontainer.classList.toggle("bottom-padding", visible)
+  controls.classList.toggle("fly-in", visible)
+  ctab.classList.toggle("fly-in", visible)
+}
+
+// The ctab is the only manual toggle and is only rendered on narrow screens.
+function showControls() {
+  const controls = document.getElementById('controls');
+  setControlsVisible(!controls.classList.contains('fly-in'))
 }

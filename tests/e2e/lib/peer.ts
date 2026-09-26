@@ -11,11 +11,12 @@ export interface PeerOptions {
 }
 
 /**
- * `signaling.js` declares its peer-connection registry with a top-level `let`,
- * so it is a global lexical binding rather than a property of `window`. Page
- * functions below therefore reference it as a free variable.
+ * `signaling.js` declares its peer registry with a top-level `const`, so it is
+ * a global lexical binding rather than a property of `window`. Page functions
+ * below therefore reference it as a free variable. Each entry is a peer
+ * record: `{ pc, state, pendingCandidates, mediaState }`.
  */
-declare const pcs: Record<string, RTCPeerConnection | null>;
+declare const peers: Record<string, { pc: RTCPeerConnection; state: string } | undefined>;
 
 export interface InboundVideoStats {
   framesDecoded: number;
@@ -80,6 +81,36 @@ export class Peer {
     });
   }
 
+  /**
+   * Opens a second tab in the same browser and joins the same room under the
+   * same display name (the user id is regenerated per tab). Returns the new
+   * page so the test can close it.
+   */
+  async joinSecondTab(roomCode: string): Promise<Page> {
+    const tab = await this.context.newPage();
+    tab.on('pageerror', (e) => this.pageErrors.push(String(e)));
+    await tab.goto(`/room?id=${roomCode}`);
+    await tab.fill('#nameInput', this.opts.name);
+    await tab.click('#start-button');
+    await tab.waitForFunction(() => {
+      const v = document.getElementById('localVideo') as HTMLVideoElement | null;
+      return !!v?.srcObject;
+    });
+    return tab;
+  }
+
+  /** How many remote tiles are rendered for participants with this display name. */
+  async remoteTileCount(remoteName: string): Promise<number> {
+    return this.page.locator(this.tile(remoteName)).count();
+  }
+
+  /** Overlay caption of a remote tile, e.g. "bob (muted)". */
+  async remoteOverlayText(remoteName: string): Promise<string> {
+    const locator = this.page.locator(`${this.tile(remoteName)} .video-overlay`);
+    await locator.first().waitFor({ state: 'attached' });
+    return (await locator.first().innerText()).trim();
+  }
+
   /** CSS selector for the tile rendered for a remote participant. */
   tile(remoteName: string): string {
     return `div[id^="${remoteName}__"][id$="-container"]`;
@@ -92,22 +123,22 @@ export class Peer {
   /** Signalling-level view of this peer's RTCPeerConnections. */
   async connections(): Promise<ConnectionState[]> {
     return this.page.evaluate(() =>
-      Object.entries(pcs)
-        .filter(([, pc]) => pc !== null)
-        .map(([peerId, pc]) => ({
+      Object.entries(peers)
+        .filter(([, peer]) => peer !== undefined)
+        .map(([peerId, peer]) => ({
           peerId,
-          connectionState: pc!.connectionState,
-          iceConnectionState: pc!.iceConnectionState,
-          signalingState: pc!.signalingState,
+          connectionState: peer!.pc.connectionState,
+          iceConnectionState: peer!.pc.iceConnectionState,
+          signalingState: peer!.pc.signalingState,
         })),
     );
   }
 
   async inboundVideo(remoteName: string): Promise<InboundVideoStats> {
     return this.page.evaluate(async (prefix) => {
-      const entry = Object.entries(pcs).find(([id, pc]) => id.startsWith(prefix + '__') && pc);
+      const entry = Object.entries(peers).find(([id, peer]) => id.startsWith(prefix + '__') && peer);
       if (!entry) throw new Error(`no peer connection for ${prefix}`);
-      const stats = await entry[1]!.getStats();
+      const stats = await entry[1]!.pc.getStats();
       const out = { framesDecoded: 0, bytesReceived: 0 };
       stats.forEach((r) => {
         if (r.type === 'inbound-rtp' && r.kind === 'video') {
@@ -122,9 +153,9 @@ export class Peer {
   /** Cumulative received audio energy, the standard "is audio actually flowing" signal. */
   async inboundAudioEnergy(remoteName: string): Promise<number> {
     return this.page.evaluate(async (prefix) => {
-      const entry = Object.entries(pcs).find(([id, pc]) => id.startsWith(prefix + '__') && pc);
+      const entry = Object.entries(peers).find(([id, peer]) => id.startsWith(prefix + '__') && peer);
       if (!entry) throw new Error(`no peer connection for ${prefix}`);
-      const stats = await entry[1]!.getStats();
+      const stats = await entry[1]!.pc.getStats();
       let energy = 0;
       stats.forEach((r) => {
         if (r.type === 'inbound-rtp' && r.kind === 'audio') energy = r.totalAudioEnergy ?? 0;
