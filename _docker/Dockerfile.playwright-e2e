@@ -16,7 +16,7 @@ RUN go mod download
 # npm deps + browsers cache independently of source changes; package-lock pins
 # @playwright/test, and `playwright install` resolves the matching builds.
 COPY tests/e2e/package.json tests/e2e/package-lock.json tests/e2e/
-RUN cd tests/e2e && npm ci && npx playwright install --with-deps firefox
+RUN cd tests/e2e && npx playwright install --with-deps firefox
 
 COPY . .
 RUN go build ./...
