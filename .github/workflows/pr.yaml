@@ -58,13 +58,18 @@ jobs:
             type=gha,scope=main-playwright-e2e
           cache-to: |
             type=gha,mode=max,scope=${{ github.ref_name }}-playwright-e2e
+      # The built image is a scratch "results" stage: /results holds the report,
+      # traces and the suite's exit code so artifacts exist even on failure.
       - name: Extract report and traces
         if: ${{ !cancelled() }}
         run: |
           cid=$(docker create "${{ steps.build.outputs.imageid }}")
-          docker cp "$cid:/app/tests/e2e/playwright-report" tests/e2e/ 2>/dev/null || true
-          docker cp "$cid:/app/tests/e2e/test-results" tests/e2e/ 2>/dev/null || true
+          docker cp "$cid:/results" e2e-results
           docker rm "$cid"
+          cp -r e2e-results/playwright-report e2e-results/test-results tests/e2e/ 2>/dev/null || true
+      - name: Check e2e result
+        if: ${{ !cancelled() }}
+        run: exit "$(cat e2e-results/EXIT_CODE)"
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
