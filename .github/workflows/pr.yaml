@@ -53,6 +53,7 @@ jobs:
           file: _docker/Dockerfile.playwright-e2e
           push: false
           load: true
+          tags: hitime-e2e:latest
           cache-from: |
             type=gha,scope=${{ github.ref_name }}-playwright-e2e
             type=gha,scope=main-playwright-e2e
@@ -63,7 +64,7 @@ jobs:
       - name: Extract report and traces
         if: ${{ !cancelled() }}
         run: |
-          cid=$(docker create "${{ steps.build.outputs.imageid }}")
+          cid=$(docker create hitime-e2e:latest)
           docker cp "$cid:/results" e2e-results
           docker rm "$cid"
           cp -r e2e-results/playwright-report e2e-results/test-results tests/e2e/ 2>/dev/null || true
