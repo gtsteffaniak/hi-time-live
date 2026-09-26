@@ -13,14 +13,18 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-# npm deps + browsers cache independently of source changes; package-lock pins
-# @playwright/test, and `playwright install` resolves the matching builds.
-COPY tests/e2e/package.json tests/e2e/package-lock.json tests/e2e/
-RUN cd tests/e2e && npx playwright install --with-deps firefox
+# Reuse the base image's playwright install (/app/frontend/node_modules) and
+# chromium build instead of npm ci. Firefox is the only browser the base lacks;
+# install it via the base's playwright so the build matches. typescript is the
+# only tool the base lacks.
+RUN ln -s /app/frontend/node_modules /app/node_modules \
+    && npm i -g typescript \
+    && cd /app/frontend && npx playwright install --with-deps firefox
 
 COPY . .
 RUN go build ./...
 
 WORKDIR /app/tests/e2e
 ENV CI=true
-RUN npx tsc --noEmit && npx playwright test
+RUN tsc --noEmit -p tsconfig.json \
+    && node /app/frontend/node_modules/@playwright/test/cli.js test
