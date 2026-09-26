@@ -26,7 +26,12 @@ const configuration = {
 let localUserId = "notset"
 let aliveUsers = {}
 let pcs = {}
-const localCandidates = [];
+// ICE candidates are gathered per peer connection: a candidate belongs to the
+// ufrag of the connection that produced it, so sharing one list across peers
+// sends the wrong candidates to everybody once a second peer joins.
+const peerCandidates = {};
+// How long to keep gathering ICE before sending the offer/answer anyway.
+const gatheringTimeoutSeconds = 5;
 let localVideo = document.getElementById('localVideo');
 
 
@@ -137,6 +142,7 @@ function removeRemoteVideoStream(id) {
         containerDiv.remove(); // Removes the container div from the DOM
     }
     const videoContainer = document.getElementById('video-container');
+    updateContainerClass();
     const count = videoContainer.getElementsByTagName('video').length;
     if (count <= 0) {
         updateStatusText("Waiting on others to join");
@@ -207,76 +213,78 @@ function filterCodecs(sdp, allowedCodecs) {
 }
 
 
-async function waitForCandidates(id) {
-    pcs[id].onicecandidate = ({ candidate }) => handleCandidate(candidate);
-    createRemoteVideoStream(id)
+// addLocalTracks reuses a single capture for every peer connection, so the mute
+// and video controls act on the tracks all peers actually receive.
+async function addLocalTracks(id) {
     localVideo = document.getElementById('localVideo');
-    if (localVideo.srcObject) {
+    if (!localStream) {
         localStream = await navigator.mediaDevices.getUserMedia(videoConstraints);
         localVideo.srcObject = localStream;
-        localStream.getTracks().forEach((track) => pcs[id].addTrack(track, localStream));
-
     }
-    let offer = await pcs[id].createOffer();
-    const filteredSDP = filterCodecs(offer.sdp, allowedCodecs);
-    offer.sdp = filteredSDP;
-    await pcs[id].setLocalDescription(offer);
+    localStream.getTracks().forEach((track) => pcs[id].addTrack(track, localStream));
+}
+
+// waitForCandidates must run after the local description is set: gathering
+// belongs to the ufrag of that description, so candidates collected before it
+// (or before a second createOffer) are discarded by the remote peer.
+async function waitForCandidates(id) {
     statusText = "Gathering network information"
     updateStatusText(statusText)
-    for (let i = 0; i < 5; i++) {
-        await delay(1000);
-        if (localCandidates.length > 10) {
-            await delay(1000)
+    for (let i = 0; i < gatheringTimeoutSeconds; i++) {
+        if (!pcs[id] || pcs[id].iceGatheringState === 'complete') {
             return
         }
+        await delay(1000);
         statusText += "."
         updateStatusText(statusText)
     }
 }
 
-async function handleOffer(msg) {
-    let id = msg.userId
-    console.log("handling offer from", msg.userId)
-    const offerDescription = new RTCSessionDescription({ "type": "offer", "sdp": msg.offer })
-    await pcs[id].setRemoteDescription(offerDescription);
-    handleRemoteCandidates(msg)
+async function offerPeer(id) {
+    updateStatusText("Attempting to connect to new user")
+    const offer = await pcs[id].createOffer();
+    offer.sdp = filterCodecs(offer.sdp, allowedCodecs);
+    await pcs[id].setLocalDescription(offer);
+    await waitForCandidates(id)
+    if (!pcs[id]) {
+        return
+    }
+    console.log("sending offer to ", id)
+    sendEvent({
+        eventType: "newOffer",
+        userId: localUserId,
+        forUser: id,
+        offer: pcs[id].localDescription.sdp,
+        candidates: JSON.stringify(peerCandidates[id] || []),
+        code: "{{ .code }}",
+    })
+}
 
-    // Create an answer
+async function answerPeer(id, msg) {
+    console.log("handling offer from", id)
+    await pcs[id].setRemoteDescription(new RTCSessionDescription({ "type": "offer", "sdp": msg.offer }));
+    await handleRemoteCandidates(msg)
     const answer = await pcs[id].createAnswer();
-    const filteredSDP = filterCodecs(answer.sdp, allowedCodecs);
-
-    // Set local description with the answer
-    const responseMessage = {
+    answer.sdp = filterCodecs(answer.sdp, allowedCodecs);
+    await pcs[id].setLocalDescription(answer);
+    await waitForCandidates(id)
+    if (!pcs[id]) {
+        return
+    }
+    console.log("sending answer to ", id)
+    sendEvent({
         eventType: "answer",
         userId: localUserId,
         forUser: id,
-        answer: filteredSDP,
-        candidates: JSON.stringify(localCandidates),
+        answer: pcs[id].localDescription.sdp,
+        candidates: JSON.stringify(peerCandidates[id] || []),
         code: "{{ .code }}",
-    }
-    console.log("sending answer to ", id)
-    // Exchange the answer with the remote peer
-    sendEvent(responseMessage)
-    loadingModal = document.getElementById('loadingModal');
-    loadingModal.classList.add("hidden")
-    await pcs[id].setLocalDescription(answer);
+    })
+    hideLoadingModal()
 }
 
-async function handleCreateOffer(id) {
-    updateStatusText("Attempting to connect to new user")
-    let myoffer = await pcs[id].createOffer();
-    myoffer.sdp = filterCodecs(myoffer.sdp, allowedCodecs);;
-    await pcs[id].setLocalDescription(myoffer);
-    // Set local description with the answer
-    const responseMessage = {
-        eventType: "newOffer",
-        userId: localUserId,
-        offer: myoffer.sdp,
-        candidates: JSON.stringify(localCandidates),
-        code: "{{ .code }}",
-    }
-    console.log("sending offer to ", id)
-    sendEvent(responseMessage)
+function hideLoadingModal() {
+    document.getElementById('loadingModal').classList.add("hidden")
 }
 
 function sendEvent(msg) {
@@ -287,28 +295,32 @@ function sendEvent(msg) {
             "Content-Type": "application/json"
         },
         body: JSON.stringify(msg)
-    }).then(response => console.log(response))
-        .catch(error => console.error('Fetch error:', error));
+    }).then(response => {
+        if (!response.ok) {
+            console.error('signaling rejected', msg.eventType, response.status);
+            updateStatusText("Connection problem, try rejoining");
+        }
+    }).catch(error => console.error('Fetch error:', error));
 
 }
 
 async function newWebRTC(id, msg = {}) {
     console.log("adding new user to pcs: ", id)
-    if (id in pcs) {
+    if (pcs[id]) {
         console.log("skipping, user exists,", id)
         return
     }
-    if (pcs[id]) {
-        pcs[id] = null
-    }
-    pcs[id] = await new RTCPeerConnection(configuration);
-    console.log("new user pcs: ", pcs[id])
-
-    await waitForCandidates(id)
+    pcs[id] = new RTCPeerConnection(configuration);
+    peerCandidates[id] = [];
+    pcs[id].onicecandidate = ({ candidate }) => handleCandidate(id, candidate);
+    createRemoteVideoStream(id)
+    await addLocalTracks(id)
+    // The existing participants offer, the joiner answers; see
+    // docs/signaling-protocol.md.
     if ('offer' in msg) {
-        handleOffer(msg)
+        await answerPeer(id, msg)
     } else {
-        handleCreateOffer(id)
+        await offerPeer(id)
     }
 }
 
@@ -365,33 +377,49 @@ async function startLocalVideo(userId) {
 async function handleClose(msg) {
     if (pcs[msg.userId]) {
         pcs[msg.userId].close();
-        pcs[msg.userId] = null;
+        delete pcs[msg.userId];
     }
+    delete peerCandidates[msg.userId];
     removeRemoteVideoStream(msg.userId)
-    console.log("closed video of peer: ", msg.Id)
+    console.log("closed video of peer: ", msg.userId)
 }
 
 async function handleAnswer(msg) {
     console.log("handling answer from ", msg.userId)
+    if (!pcs[msg.userId]) {
+        console.warn("answer for unknown peer", msg.userId);
+        return
+    }
     await pcs[msg.userId].setRemoteDescription({ "type": "answer", "sdp": msg.answer });
-    handleRemoteCandidates(msg)
-
-    loadingModal = document.getElementById('loadingModal');
-    loadingModal.classList.add("hidden")
+    await handleRemoteCandidates(msg)
+    hideLoadingModal()
     console.log("done handling answer")
 }
 
 async function handleRemoteCandidates(message) {
-    let candidates = JSON.parse(message.candidates)
+    const pc = pcs[message.userId]
+    if (!pc) {
+        return
+    }
+    let candidates
+    try {
+        candidates = JSON.parse(message.candidates || "[]")
+    } catch (err) {
+        console.error("unparseable candidates from", message.userId, err);
+        return
+    }
     console.log("candidates from ", message.userId)
-    for (c in candidates) {
-        await pcs[message["userId"]].addIceCandidate(candidates[c])
+    for (const candidate of candidates) {
+        try {
+            await pc.addIceCandidate(candidate)
+        } catch (err) {
+            console.error("rejected candidate from", message.userId, err);
+        }
     }
 }
 
-async function handleCandidate(candidate) {
-    if (candidate != null) {
-        console.log("new candidate")
-        localCandidates.push(candidate)
+function handleCandidate(id, candidate) {
+    if (candidate != null && peerCandidates[id]) {
+        peerCandidates[id].push(candidate)
     }
 }

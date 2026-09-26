@@ -37,8 +37,13 @@ generic room chat bus):
 
 | eventType | Routed to | Requirements |
 | --- | --- | --- |
-| `newOffer` | every *other* user in `code` | sender has a live stream in `code` |
+| `newOffer` | every stream of `forUser` in `code` | `forUser` set, sender live in `code` |
 | `answer` | every stream of `forUser` in `code` | `forUser` set, sender live in `code` |
+
+Offers are *addressed*, never broadcast: if a broadcast offer were answered by a
+participant it was not meant for, that answer would corrupt the intended
+connection's remote description (observed: a peer answering another pair's
+offer leaves both ends stuck at `connectionState: connecting`).
 
 Server -> client:
 
@@ -78,8 +83,8 @@ A `: keepalive` comment is written every 20s so idle streams survive proxies.
 alice: GET /events  -> acknowledge
 bob:   GET /events  -> acknowledge
 alice:              <- newUser(bob)
-alice: POST /event newOffer(alice)   -> bob receives newOffer(alice)
-bob:   POST /event answer(forUser=alice) -> alice receives answer
+alice: POST /event newOffer(forUser=bob)   -> bob receives newOffer(alice)
+bob:   POST /event answer(forUser=alice)   -> alice receives answer
 (both sides apply SDP, ICE candidates travel inside the offer/answer payloads)
 bob closes stream
 alice:              <- removedUser(bob)

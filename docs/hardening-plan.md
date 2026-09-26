@@ -43,18 +43,17 @@ rejoin, aborted signaling requests, unauthorized sender, mute, video disable.
 
 ## Next steps (not in this change)
 
-1. **Frontend state machine.** `templates/js/signaling.js` keeps mutable
-   top-level state (`pcs`, a shared `localCandidates` array) and waits on fixed
-   timeouts while ICE gathers. Replace it with one explicit per-peer object
-   (`new` -> `offering`/`answering` -> `connected` -> `closed`) that owns its own
-   candidate list, so a slow peer cannot inherit another peer's candidates and a
-   late message for a closed peer is dropped instead of throwing.
-2. **Trickle ICE.** Today candidates are batched into the offer/answer after a
-   fixed delay. A `candidate` event type would cut setup latency and remove the
+1. **Frontend state machine.** `templates/js/signaling.js` now keeps per-peer
+   candidate lists and an ordered offer/answer path, but state is still implicit
+   in module-level `pcs`. A per-peer object
+   (`new` -> `offering`/`answering` -> `connected` -> `closed`) would make
+   late/duplicate messages droppable on purpose rather than by accident.
+2. **Trickle ICE.** Candidates are still batched into the offer/answer after a
+   gather wait. A `candidate` event type would cut setup latency and remove the
    sleep.
-3. **Error surfacing.** `sendEvent` ignores the HTTP status; a `403`/`400`
-   currently looks identical to success. Surface failures in the UI and retry
-   the SSE stream with backoff on disconnect.
+3. **Error surfacing.** `sendEvent` now logs non-2xx responses and updates the
+   status line, but there is no SSE retry/backoff — a dropped stream still
+   leaves the user silently disconnected.
 4. **Explicit media state.** Mute/disable only flips `track.enabled`, so the
    remote side sees silence and black rather than a labelled state. A
    `mediaState` event would let the UI show who is muted.

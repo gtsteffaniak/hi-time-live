@@ -170,16 +170,14 @@ func postEventHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch event.EventType {
-	case "newOffer":
-		sendToOthers(event.Code, event.UserId, event)
-	case "answer":
-		if event.ForUser == "" {
-			http.Error(w, "Missing forUser", http.StatusBadRequest)
-			return
-		}
-		sendMessageToUser(event.Code, event.ForUser, event)
+	// Offers and answers are both addressed: broadcasting an offer hands it to
+	// every other participant, and a second joiner answering an offer meant for
+	// someone else corrupts that connection's remote description.
+	if event.ForUser == "" {
+		http.Error(w, "Missing forUser", http.StatusBadRequest)
+		return
 	}
+	sendMessageToUser(event.Code, event.ForUser, event)
 	w.WriteHeader(http.StatusOK)
 }
 

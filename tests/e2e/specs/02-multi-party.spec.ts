@@ -3,7 +3,9 @@ import { test, expect, roomCode, type Peer } from '../lib/fixtures.js';
 const DOMINANT: Record<string, 0 | 1 | 2> = { red: 0, green: 1, blue: 2, yellow: 0 };
 
 async function expectSeesCamera(viewer: Peer, subject: Peer) {
-  await expect(viewer.remoteVideo(subject.opts.name)).toBeVisible();
+  // The remote video element stays hidden until media attaches, so liveness is
+  // asserted from the RTP stats rather than visibility.
+  await expect(viewer.remoteVideo(subject.opts.name)).toHaveCount(1);
   await expect
     .poll(async () => (await viewer.inboundVideo(subject.opts.name)).framesDecoded, {
       message: `${viewer.opts.name} decoded no frames from ${subject.opts.name}`,
@@ -26,7 +28,9 @@ test('three peers form a full mesh and each sees both others', async ({ newPeer 
 
   await alice.join(code);
   await bob.join(code);
-  await expect(alice.remoteVideo('bob')).toBeVisible();
+  await expect
+    .poll(async () => (await alice.inboundVideo('bob')).framesDecoded)
+    .toBeGreaterThan(5);
 
   await carol.join(code);
 
@@ -53,7 +57,11 @@ test('one peer leaving a three-way call leaves the other two connected', async (
   await alice.join(code);
   await bob.join(code);
   await carol.join(code);
-  await expect(alice.remoteVideo('carol')).toBeVisible();
+  await expect
+    .poll(async () => (await alice.inboundVideo('carol')).framesDecoded, {
+      message: 'alice decoded no frames from carol',
+    })
+    .toBeGreaterThan(5);
 
   await carol.leave();
 

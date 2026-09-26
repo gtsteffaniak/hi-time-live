@@ -62,7 +62,7 @@ func TestRoomsAreIsolated(t *testing.T) {
 	alice.expect("newUser")
 
 	// Offers posted in room A must not leak into room B.
-	resp := postEvent(t, server, eventMessage{EventType: "newOffer", UserId: "bob", Code: roomA, Offer: "v=0"})
+	resp := postEvent(t, server, eventMessage{EventType: "newOffer", UserId: "bob", Code: roomA, ForUser: "alice", Offer: "v=0"})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("newOffer status = %d, want 200", resp.StatusCode)
 	}
@@ -93,6 +93,34 @@ func TestAnswerIsDeliveredOnlyToItsTarget(t *testing.T) {
 	carol.expectSilence(200 * time.Millisecond)
 }
 
+func TestOfferIsDeliveredOnlyToItsTarget(t *testing.T) {
+	server := newTestServer(t)
+	code := newCode(t)
+
+	alice := connectSSE(t, server, code, "alice")
+	bob := connectSSE(t, server, code, "bob")
+	carol := connectSSE(t, server, code, "carol")
+	defer alice.disconnect()
+	defer bob.disconnect()
+	defer carol.disconnect()
+
+	alice.expect("newUser")
+	alice.expect("newUser")
+	bob.expect("newUser")
+
+	// An offer aimed at carol must never reach bob: if a bystander answered an
+	// offer meant for someone else, its answer would poison the intended
+	// connection's remote description.
+	resp := postEvent(t, server, eventMessage{EventType: "newOffer", UserId: "alice", ForUser: "carol", Code: code, Offer: "v=0"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("newOffer status = %d, want 200", resp.StatusCode)
+	}
+	if msg := carol.expect("newOffer"); msg.UserId != "alice" {
+		t.Errorf("offer came from %q, want alice", msg.UserId)
+	}
+	bob.expectSilence(200 * time.Millisecond)
+}
+
 func TestPostEventRejectsMalformedAndUnauthorisedPayloads(t *testing.T) {
 	server := newTestServer(t)
 	code := newCode(t)
@@ -108,9 +136,10 @@ func TestPostEventRejectsMalformedAndUnauthorisedPayloads(t *testing.T) {
 		{"missing event type", eventMessage{UserId: "alice", Code: code}, http.StatusBadRequest},
 		{"invalid room code", eventMessage{EventType: "newOffer", UserId: "alice", Code: "nope"}, http.StatusBadRequest},
 		{"missing user", eventMessage{EventType: "newOffer", Code: code}, http.StatusBadRequest},
+		{"offer without target", eventMessage{EventType: "newOffer", UserId: "alice", Code: code}, http.StatusBadRequest},
 		{"answer without target", eventMessage{EventType: "answer", UserId: "alice", Code: code}, http.StatusBadRequest},
-		{"sender not in room", eventMessage{EventType: "newOffer", UserId: "stranger", Code: code}, http.StatusForbidden},
-		{"sender in another room", eventMessage{EventType: "newOffer", UserId: "alice", Code: newCode(t)}, http.StatusForbidden},
+		{"sender not in room", eventMessage{EventType: "newOffer", UserId: "stranger", ForUser: "alice", Code: code}, http.StatusForbidden},
+		{"sender in another room", eventMessage{EventType: "newOffer", UserId: "alice", ForUser: "bob", Code: newCode(t)}, http.StatusForbidden},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
