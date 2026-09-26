@@ -37,34 +37,27 @@ jobs:
 
   e2e:
     name: playwright e2e
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.0.0
-      # The suite runs inside docker build on a prebuilt playwright base image,
-      # so no per-run node/browser install is needed.
-      - name: Build and Test
-        id: build
-        uses: docker/build-push-action@v6
+      - uses: actions/setup-go@v5
         with:
-          context: .
-          file: _docker/Dockerfile.playwright-e2e
-          push: false
-          load: true
-          cache-from: |
-            type=gha,scope=${{ github.ref_name }}-playwright-e2e
-            type=gha,scope=main-playwright-e2e
-          cache-to: |
-            type=gha,mode=max,scope=${{ github.ref_name }}-playwright-e2e
-      - name: Extract report and traces
-        if: ${{ !cancelled() }}
-        run: |
-          cid=$(docker create "${{ steps.build.outputs.imageid }}")
-          docker cp "$cid:/app/tests/e2e/playwright-report" tests/e2e/ 2>/dev/null || true
-          docker cp "$cid:/app/tests/e2e/test-results" tests/e2e/ 2>/dev/null || true
-          docker rm "$cid"
+          go-version: '1.22'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
+      - run: npm ci
+        working-directory: tests/e2e
+      - run: npm run typecheck
+        working-directory: tests/e2e
+      - run: npx playwright install --with-deps chromium firefox
+        working-directory: tests/e2e
+      - run: go build ./...
+      - run: npx playwright test
+        working-directory: tests/e2e
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
