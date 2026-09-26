@@ -23,10 +23,11 @@ Every message in both directions is one JSON object:
   "eventType": "newOffer",   // required
   "userId":    "alice",      // sender
   "code":      "<room uuid>",// room the sender claims
-  "forUser":   "bob",        // required for answer
+  "forUser":   "bob",        // required for newOffer/answer/candidate
   "offer":     "<sdp>",
   "answer":    "<sdp>",
-  "candidates": "<json array of ICE candidates>"
+  "candidate": "<json ICE candidate>",   // trickled, one per message
+  "mediaState": "{\"audio\":true,\"video\":false}" // presence, room-scoped
 }
 ```
 
@@ -39,6 +40,8 @@ generic room chat bus):
 | --- | --- | --- |
 | `newOffer` | every stream of `forUser` in `code` | `forUser` set, sender live in `code` |
 | `answer` | every stream of `forUser` in `code` | `forUser` set, sender live in `code` |
+| `candidate` | every stream of `forUser` in `code` | `forUser` set, sender live in `code` |
+| `mediaState` | every *other* participant in `code` | sender live in `code` |
 
 Offers are *addressed*, never broadcast: if a broadcast offer were answered by a
 participant it was not meant for, that answer would corrupt the intended
@@ -52,7 +55,16 @@ Server -> client:
 | `acknowledge` | stream established; sent before any room state changes |
 | `newUser` | a new participant joined; existing peers create the offer |
 | `removedUser` | the last stream of a participant closed |
-| `newOffer` / `answer` | forwarded verbatim from another participant |
+| `newOffer` / `answer` / `candidate` / `mediaState` | forwarded verbatim from another participant |
+
+## ICE
+
+Candidates trickle: each `onicecandidate` result is posted as its own
+`candidate` event instead of waiting for `iceGatheringState === 'complete'` and
+bundling a list into the SDP. A candidate can beat the offer that created it,
+so receivers queue candidates until their peer connection has a remote
+description (and until the peer exists at all). The legacy `candidates` array
+field on `offer`/`answer` is still parsed for compatibility but no longer sent.
 
 A `: keepalive` comment is written every 20s so idle streams survive proxies.
 
@@ -84,8 +96,9 @@ alice: GET /events  -> acknowledge
 bob:   GET /events  -> acknowledge
 alice:              <- newUser(bob)
 alice: POST /event newOffer(forUser=bob)   -> bob receives newOffer(alice)
+alice: POST /event candidate(forUser=bob)  -> bob receives candidate(alice)   (repeats)
 bob:   POST /event answer(forUser=alice)   -> alice receives answer
-(both sides apply SDP, ICE candidates travel inside the offer/answer payloads)
+bob:   POST /event candidate(forUser=alice)-> alice receives candidate(bob)   (repeats)
 bob closes stream
 alice:              <- removedUser(bob)
 ```

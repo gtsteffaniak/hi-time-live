@@ -4,14 +4,14 @@ import type { MediaName } from './media.js';
 
 export interface Fixtures {
   /** Launches a participant in its own browser; torn down automatically. */
-  newPeer: (name: string, media: MediaName) => Promise<Peer>;
+  newPeer: (name: string, media: MediaName, engine?: 'chromium' | 'firefox') => Promise<Peer>;
 }
 
 export const test = base.extend<Fixtures>({
   newPeer: async ({ baseURL }, use) => {
     const peers: Peer[] = [];
-    await use(async (name: string, media: MediaName) => {
-      const opts: PeerOptions = { name, media, baseURL: baseURL! };
+    await use(async (name: string, media: MediaName, engine?: 'chromium' | 'firefox') => {
+      const opts: PeerOptions = { name, media, baseURL: baseURL!, engine };
       const peer = await Peer.launch(opts);
       peers.push(peer);
       return peer;

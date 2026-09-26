@@ -1,21 +1,24 @@
-import { chromium, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { chromium, firefox, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { MEDIA, type MediaName, type PeerMedia } from './media.js';
 
 export interface PeerOptions {
   /** display name typed into the join modal; also the prefix of the signalling user id */
   name: string;
-  /** which deterministic fake camera/microphone this peer publishes */
+  /** which deterministic fake camera/microphone this peer publishes; ignored for firefox, which uses its built-in fake streams */
   media: MediaName;
   baseURL: string;
   headless?: boolean;
+  /** browser engine; firefox peers get generic fake media via prefs since the per-file capture flags are chromium-only */
+  engine?: 'chromium' | 'firefox';
 }
 
 /**
- * `signaling.js` declares its peer-connection registry with a top-level `let`,
- * so it is a global lexical binding rather than a property of `window`. Page
- * functions below therefore reference it as a free variable.
+ * `signaling.js` declares its peer registry with a top-level `const`, so it is
+ * a global lexical binding rather than a property of `window`. Page functions
+ * below therefore reference it as a free variable. Each entry is a peer
+ * record: `{ pc, state, pendingCandidates, mediaState }`.
  */
-declare const pcs: Record<string, RTCPeerConnection | null>;
+declare const peers: Record<string, { pc: RTCPeerConnection; state: string } | undefined>;
 
 export interface InboundVideoStats {
   framesDecoded: number;
@@ -48,20 +51,36 @@ export class Peer {
 
   static async launch(opts: PeerOptions): Promise<Peer> {
     const peer = new Peer(opts);
-    peer.browser = await chromium.launch({
-      headless: opts.headless ?? true,
-      args: [
-        '--use-fake-device-for-media-stream',
-        '--use-fake-ui-for-media-stream',
-        `--use-file-for-fake-video-capture=${peer.media.videoFile}`,
-        `--use-file-for-fake-audio-capture=${peer.media.audioFile}`,
-        '--autoplay-policy=no-user-gesture-required',
-        '--disable-features=WebRtcHideLocalIpsWithMdns',
-      ],
-    });
+    // Firefox's resolver does not map `localhost` in every environment (WSL);
+    // 127.0.0.1 is still a secure context for getUserMedia.
+    const baseURL = opts.engine === 'firefox' ? opts.baseURL.replace('localhost', '127.0.0.1') : opts.baseURL;
+    if (opts.engine === 'firefox') {
+      peer.browser = await firefox.launch({
+        headless: opts.headless ?? true,
+        firefoxUserPrefs: {
+          'media.navigator.streams.fake': true,
+          'media.navigator.permission.disabled': true,
+          'permissions.default.camera': 1,
+          'permissions.default.microphone': 1,
+        },
+      });
+    } else {
+      peer.browser = await chromium.launch({
+        headless: opts.headless ?? true,
+        args: [
+          '--use-fake-device-for-media-stream',
+          '--use-fake-ui-for-media-stream',
+          `--use-file-for-fake-video-capture=${peer.media.videoFile}`,
+          `--use-file-for-fake-audio-capture=${peer.media.audioFile}`,
+          '--autoplay-policy=no-user-gesture-required',
+          '--disable-features=WebRtcHideLocalIpsWithMdns',
+        ],
+      });
+    }
     peer.context = await peer.browser.newContext({
-      baseURL: opts.baseURL,
-      permissions: ['camera', 'microphone'],
+      baseURL,
+      // context permissions are chromium-only; firefox is covered by the prefs above
+      ...(opts.engine === 'firefox' ? {} : { permissions: ['camera', 'microphone'] as const }),
     });
     peer.page = await peer.context.newPage();
     peer.page.on('console', (m) => peer.consoleLog.push(`[${m.type()}] ${m.text()}`));
@@ -80,6 +99,36 @@ export class Peer {
     });
   }
 
+  /**
+   * Opens a second tab in the same browser and joins the same room under the
+   * same display name (the user id is regenerated per tab). Returns the new
+   * page so the test can close it.
+   */
+  async joinSecondTab(roomCode: string): Promise<Page> {
+    const tab = await this.context.newPage();
+    tab.on('pageerror', (e) => this.pageErrors.push(String(e)));
+    await tab.goto(`/room?id=${roomCode}`);
+    await tab.fill('#nameInput', this.opts.name);
+    await tab.click('#start-button');
+    await tab.waitForFunction(() => {
+      const v = document.getElementById('localVideo') as HTMLVideoElement | null;
+      return !!v?.srcObject;
+    });
+    return tab;
+  }
+
+  /** How many remote tiles are rendered for participants with this display name. */
+  async remoteTileCount(remoteName: string): Promise<number> {
+    return this.page.locator(this.tile(remoteName)).count();
+  }
+
+  /** Overlay caption of a remote tile, e.g. "bob (muted)". */
+  async remoteOverlayText(remoteName: string): Promise<string> {
+    const locator = this.page.locator(`${this.tile(remoteName)} .video-overlay`);
+    await locator.first().waitFor({ state: 'attached' });
+    return (await locator.first().innerText()).trim();
+  }
+
   /** CSS selector for the tile rendered for a remote participant. */
   tile(remoteName: string): string {
     return `div[id^="${remoteName}__"][id$="-container"]`;
@@ -92,22 +141,22 @@ export class Peer {
   /** Signalling-level view of this peer's RTCPeerConnections. */
   async connections(): Promise<ConnectionState[]> {
     return this.page.evaluate(() =>
-      Object.entries(pcs)
-        .filter(([, pc]) => pc !== null)
-        .map(([peerId, pc]) => ({
+      Object.entries(peers)
+        .filter(([, peer]) => peer !== undefined)
+        .map(([peerId, peer]) => ({
           peerId,
-          connectionState: pc!.connectionState,
-          iceConnectionState: pc!.iceConnectionState,
-          signalingState: pc!.signalingState,
+          connectionState: peer!.pc.connectionState,
+          iceConnectionState: peer!.pc.iceConnectionState,
+          signalingState: peer!.pc.signalingState,
         })),
     );
   }
 
   async inboundVideo(remoteName: string): Promise<InboundVideoStats> {
     return this.page.evaluate(async (prefix) => {
-      const entry = Object.entries(pcs).find(([id, pc]) => id.startsWith(prefix + '__') && pc);
+      const entry = Object.entries(peers).find(([id, peer]) => id.startsWith(prefix + '__') && peer);
       if (!entry) throw new Error(`no peer connection for ${prefix}`);
-      const stats = await entry[1]!.getStats();
+      const stats = await entry[1]!.pc.getStats();
       const out = { framesDecoded: 0, bytesReceived: 0 };
       stats.forEach((r) => {
         if (r.type === 'inbound-rtp' && r.kind === 'video') {
@@ -122,9 +171,9 @@ export class Peer {
   /** Cumulative received audio energy, the standard "is audio actually flowing" signal. */
   async inboundAudioEnergy(remoteName: string): Promise<number> {
     return this.page.evaluate(async (prefix) => {
-      const entry = Object.entries(pcs).find(([id, pc]) => id.startsWith(prefix + '__') && pc);
+      const entry = Object.entries(peers).find(([id, peer]) => id.startsWith(prefix + '__') && peer);
       if (!entry) throw new Error(`no peer connection for ${prefix}`);
-      const stats = await entry[1]!.getStats();
+      const stats = await entry[1]!.pc.getStats();
       let energy = 0;
       stats.forEach((r) => {
         if (r.type === 'inbound-rtp' && r.kind === 'audio') energy = r.totalAudioEnergy ?? 0;

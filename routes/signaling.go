@@ -38,6 +38,8 @@ type eventMessage struct {
 	UserId     string `json:"userId"`
 	Offer      string `json:"offer,omitempty"`
 	Candidates string `json:"candidates,omitempty"`
+	Candidate  string `json:"candidate,omitempty"`
+	MediaState string `json:"mediaState,omitempty"`
 	Code       string `json:"code,omitempty"`
 	Message    string `json:"message,omitempty"`
 	Answer     string `json:"answer,omitempty"`
@@ -49,8 +51,10 @@ type eventMessage struct {
 // else is rejected rather than forwarded, so the signaling channel cannot be
 // used as a generic room-wide message bus.
 var clientEventTypes = map[string]bool{
-	"newOffer": true,
-	"answer":   true,
+	"newOffer":   true,
+	"answer":     true,
+	"candidate":  true,
+	"mediaState": true,
 }
 
 // Handle SSE connection
@@ -170,9 +174,18 @@ func postEventHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Offers and answers are both addressed: broadcasting an offer hands it to
-	// every other participant, and a second joiner answering an offer meant for
-	// someone else corrupts that connection's remote description.
+	// mediaState is room-scoped presence (mute/video toggles), fanned out to
+	// everyone else so a new joiner learns it as soon as it is broadcast.
+	if event.EventType == "mediaState" {
+		sendToOthers(event.Code, event.UserId, event)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Offers, answers and trickled candidates are all addressed: broadcasting
+	// an offer hands it to every other participant, and a second joiner
+	// answering an offer meant for someone else corrupts that connection's
+	// remote description.
 	if event.ForUser == "" {
 		http.Error(w, "Missing forUser", http.StatusBadRequest)
 		return

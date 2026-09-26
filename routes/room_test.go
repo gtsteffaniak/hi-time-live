@@ -47,6 +47,9 @@ func TestAttemptJoinTreatsRepeatUserAsReconnect(t *testing.T) {
 	if got := roomUsers(code); len(got) != 1 {
 		t.Errorf("room membership = %v, want one entry", got)
 	}
+	// The room map is process-global; leave it empty for churn tests that
+	// assert nothing outlives disconnects.
+	removeUserFromRoom(code, "alice")
 }
 
 func TestRemoveUserForgetsEmptyRooms(t *testing.T) {

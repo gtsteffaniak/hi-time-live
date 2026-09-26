@@ -16,9 +16,9 @@ async function switchMedia() {
 
         // Replace tracks in peer connections
         for (let socket_id in peers) {
-            const peerConnection = peers[socket_id];
-            if (peerConnection) {
-                const senders = peerConnection.getSenders();
+            const peer = peers[socket_id];
+            if (peer && peer.pc) {
+                const senders = peer.pc.getSenders();
                 senders.forEach(sender => {
                     const newTrack = newStream.getTracks().find(track => track.kind === sender.track.kind);
                     if (newTrack) {
@@ -42,6 +42,7 @@ function toggleMute() {
         muteButton.innerText = enabled ? "Unmute" : "Mute"
         muteButton.style.backgroundColor = enabled ? "red" : "";
     }
+    broadcastMediaState()
 }
 /**
  * Enable/disable video
@@ -53,6 +54,7 @@ function toggleVid() {
         vidButton.innerText = enabled ? "Enable Video" : "Disable Video"
         vidButton.style.backgroundColor = enabled ? "red" : "";
     }
+    broadcastMediaState()
 }
 /**
  * updating text of buttons
