@@ -3,9 +3,12 @@ let username = ""
 
 // Function to check for text content
 function checkForTextContent() {
-  // Replace 'your-text-element-id' with the ID of the element containing the text
+  // These only exist inside the room's privacy modal, not on the home page.
   const button = document.getElementById('start-button');
   const nameInput = document.getElementById('nameInput');
+  if (!button || !nameInput) {
+    return;
+  }
   // Event listener for the input field
   nameInput.addEventListener('input', () => {
     username = nameInput.value

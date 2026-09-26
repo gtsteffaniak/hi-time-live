@@ -57,6 +57,13 @@ rejoin, aborted signaling requests, unauthorized sender, mute, video disable.
 4. **Explicit media state.** Mute/disable only flips `track.enabled`, so the
    remote side sees silence and black rather than a labelled state. A
    `mediaState` event would let the UI show who is muted.
-5. **Test matrix.** Firefox peers (Playwright supports its own fake-media
+5. **Controls can get stuck hidden on desktop.** `updateContainerClass` toggles
+   `fly-in` on every join/leave/resize, and `#ctab` is `display:none` above
+   800px, so once the controls toggle off there is no clickable way back —
+   observed during manual UI testing. Show them unconditionally on desktop or
+   make the toggle state a single source of truth.
+6. **Test matrix.** Firefox peers (Playwright supports its own fake-media
    prefs), simulated packet loss/renegotiation, and a soak test for room-map
-   growth.
+   growth. Two further UI-level items already verified manually are good
+   candidates to automate: duplicate same-name tabs, and mute/video-off
+   propagation to a *second* remote peer.
