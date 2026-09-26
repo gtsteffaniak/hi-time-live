@@ -1,0 +1,33 @@
+FROM ghcr.io/gtsteffaniak/playwright-base:chromium
+
+# The slim base ships no CA bundle; go mod download needs it for TLS.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# The suite launches the app itself (playwright webServer runs `go run`), so
+# the image needs the Go toolchain next to the preinstalled node + browsers.
+COPY --from=golang /usr/local/go /usr/local/go
+ENV PATH=/usr/local/go/bin:$PATH
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Reuse the base image's playwright install (/app/frontend/node_modules) and
+# chromium build instead of npm ci. Firefox is the only browser the base lacks;
+# install it via the base's playwright so the build matches. typescript is the
+# only tool the base lacks.
+RUN ln -s /app/frontend/node_modules /app/node_modules \
+    && npm i -g typescript \
+    && cd /app/frontend && npx playwright install --with-deps firefox
+
+COPY . .
+RUN go build ./...
+
+WORKDIR /app/tests/e2e
+ENV CI=true
+RUN tsc --noEmit -p tsconfig.json \
+    && node /app/frontend/node_modules/@playwright/test/cli.js test
+
+## don't export layers
+FROM scratch

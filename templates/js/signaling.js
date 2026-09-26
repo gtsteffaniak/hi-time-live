@@ -7,7 +7,9 @@ const videoConstraints = {
         facingMode: { ideal: 'user' }
     }
 }
-const allowedCodecs = ['VP9', 'H264'];
+// VP8 stays on the list for interop: Firefox builds without OpenH264 cannot
+// encode H264, and removing it would leave those peers sending no video at all.
+const allowedCodecs = ['VP9', 'H264', 'VP8'];
 const configuration = {
     'iceServers': [
         { 'urls': 'stun:stun.l.google.com:19302' },
@@ -24,17 +26,24 @@ const configuration = {
     ]
 };
 let localUserId = "notset"
-let aliveUsers = {}
-let pcs = {}
-const localCandidates = [];
+
+// Each remote participant gets one peer record: the RTCPeerConnection plus
+// where it is in the offer/answer handshake, so late or duplicate signaling
+// messages are dropped deliberately instead of corrupting a live connection.
+// state: new -> offering|answering -> connected -> closed
+const peers = {};
+// A trickled candidate or mediaState can beat the offer that creates the peer;
+// they are parked here and consumed when the peer record is created.
+const earlyCandidates = {};
+const earlyMediaState = {};
+// SSE auto-reconnects while readyState is CONNECTING; a CLOSED stream is
+// restarted manually with this backoff.
+let sseRetryDelayMs = 1000;
+const sseMaxRetryDelayMs = 30000;
 let localVideo = document.getElementById('localVideo');
 
 
-function delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function createRemoteVideoStream(id) {
+function createRemoteVideoStream(id) {
     // Create the container div element
     const containerDiv = document.createElement('div');
     containerDiv.id = id + '-container';
@@ -50,8 +59,6 @@ async function createRemoteVideoStream(id) {
     const videoOverlay = document.createElement('div');
     videoOverlay.id = id + '-video-overlay';
     videoOverlay.classList.add("video-overlay")
-    const nameID = id.split("__")[0]
-    videoOverlay.innerHTML = "<p>" + nameID + "</p>"
 
     // Append the video element to the container div
     containerDiv.appendChild(videoElement);
@@ -62,8 +69,8 @@ async function createRemoteVideoStream(id) {
     videoContainer.appendChild(containerDiv);
 
     // Set the ontrack event handler for the peer connection
-    pcs[id].ontrack = (event) => {
-        console.log("ontrack event:", id,event);
+    peers[id].pc.ontrack = (event) => {
+        console.log("ontrack event:", id, event);
         const remoteStream = event.streams[0]; // Get the remote stream
         const remoteVideo = document.getElementById(videoElement.id);
 
@@ -80,7 +87,6 @@ async function createRemoteVideoStream(id) {
 // Helper function to attach media stream to the video element
 async function attachMediaStream(video, stream, id) {
     try {
-        const overlay = document.getElementById(id + '-video-overlay');
         // Use Safari-friendly attachment logic
         video.srcObject = stream;
         try {
@@ -96,6 +102,17 @@ async function attachMediaStream(video, stream, id) {
     }
 }
 
+function updatePeerOverlay(id) {
+    const overlay = document.getElementById(id + '-video-overlay');
+    if (!overlay) return;
+    const name = id.split("__")[0];
+    const state = peers[id] && peers[id].mediaState;
+    const flags = [];
+    if (state && !state.audio) flags.push("muted");
+    if (state && !state.video) flags.push("video off");
+    overlay.innerHTML = "<p>" + name + (flags.length ? " (" + flags.join(", ") + ")" : "") + "</p>";
+}
+
 function updateContainerClass() {
     const videoContainer = document.getElementById('video-container');
     const childrenCount = videoContainer.children.length;
@@ -106,7 +123,7 @@ function updateContainerClass() {
         videoContainer.classList.remove('hidden');
         if (window.innerWidth > 800) {
             videoContainer.classList.add("padding-bottom")
-            showControls()
+            setControlsVisible(true)
         }
     } else {
         videoContainer.classList.add('hidden');
@@ -137,6 +154,7 @@ function removeRemoteVideoStream(id) {
         containerDiv.remove(); // Removes the container div from the DOM
     }
     const videoContainer = document.getElementById('video-container');
+    updateContainerClass();
     const count = videoContainer.getElementsByTagName('video').length;
     if (count <= 0) {
         updateStatusText("Waiting on others to join");
@@ -207,76 +225,117 @@ function filterCodecs(sdp, allowedCodecs) {
 }
 
 
-async function waitForCandidates(id) {
-    pcs[id].onicecandidate = ({ candidate }) => handleCandidate(candidate);
-    createRemoteVideoStream(id)
+// addLocalTracks reuses a single capture for every peer connection, so the mute
+// and video controls act on the tracks all peers actually receive.
+async function addLocalTracks(peer) {
     localVideo = document.getElementById('localVideo');
-    if (localVideo.srcObject) {
+    if (!localStream) {
         localStream = await navigator.mediaDevices.getUserMedia(videoConstraints);
         localVideo.srcObject = localStream;
-        localStream.getTracks().forEach((track) => pcs[id].addTrack(track, localStream));
-
     }
-    let offer = await pcs[id].createOffer();
-    const filteredSDP = filterCodecs(offer.sdp, allowedCodecs);
-    offer.sdp = filteredSDP;
-    await pcs[id].setLocalDescription(offer);
-    statusText = "Gathering network information"
-    updateStatusText(statusText)
-    for (let i = 0; i < 5; i++) {
-        await delay(1000);
-        if (localCandidates.length > 10) {
-            await delay(1000)
-            return
+    localStream.getTracks().forEach((track) => peer.pc.addTrack(track, localStream));
+}
+
+// newPeer registers a peer record and creates its remote tile. Candidates
+// trickle out one event at a time as they are found rather than waiting for
+// gathering to complete and bundling them into the SDP.
+function newPeer(id) {
+    if (peers[id]) {
+        return peers[id]
+    }
+    console.log("adding new peer:", id)
+    const peer = {
+        id: id,
+        pc: new RTCPeerConnection(configuration),
+        state: "new",
+        pendingCandidates: earlyCandidates[id] || [],
+        mediaState: earlyMediaState[id],
+    };
+    peers[id] = peer;
+    delete earlyCandidates[id];
+    delete earlyMediaState[id];
+    peer.pc.onicecandidate = ({ candidate }) => {
+        if (candidate && peers[id]) {
+            sendEvent({
+                eventType: "candidate",
+                userId: localUserId,
+                forUser: id,
+                candidate: JSON.stringify(candidate),
+                code: "{{ .code }}",
+            })
         }
-        statusText += "."
-        updateStatusText(statusText)
-    }
+    };
+    peer.pc.onconnectionstatechange = () => {
+        if (peer.pc.connectionState === "connected") {
+            peer.state = "connected";
+        }
+        if (peer.pc.connectionState === "failed") {
+            console.warn("peer connection failed:", id);
+            closePeer(id);
+        }
+    };
+    createRemoteVideoStream(id)
+    updatePeerOverlay(id)
+    return peer
 }
 
-async function handleOffer(msg) {
-    let id = msg.userId
-    console.log("handling offer from", msg.userId)
-    const offerDescription = new RTCSessionDescription({ "type": "offer", "sdp": msg.offer })
-    await pcs[id].setRemoteDescription(offerDescription);
-    handleRemoteCandidates(msg)
-
-    // Create an answer
-    const answer = await pcs[id].createAnswer();
-    const filteredSDP = filterCodecs(answer.sdp, allowedCodecs);
-
-    // Set local description with the answer
-    const responseMessage = {
-        eventType: "answer",
-        userId: localUserId,
-        forUser: id,
-        answer: filteredSDP,
-        candidates: JSON.stringify(localCandidates),
-        code: "{{ .code }}",
+function closePeer(id) {
+    const peer = peers[id];
+    if (peer) {
+        peer.state = "closed";
+        peer.pc.close();
+        delete peers[id];
     }
-    console.log("sending answer to ", id)
-    // Exchange the answer with the remote peer
-    sendEvent(responseMessage)
-    loadingModal = document.getElementById('loadingModal');
-    loadingModal.classList.add("hidden")
-    await pcs[id].setLocalDescription(answer);
+    removeRemoteVideoStream(id)
+    console.log("closed video of peer: ", id)
 }
 
-async function handleCreateOffer(id) {
+async function offerPeer(peer) {
     updateStatusText("Attempting to connect to new user")
-    let myoffer = await pcs[id].createOffer();
-    myoffer.sdp = filterCodecs(myoffer.sdp, allowedCodecs);;
-    await pcs[id].setLocalDescription(myoffer);
-    // Set local description with the answer
-    const responseMessage = {
+    peer.state = "offering";
+    const offer = await peer.pc.createOffer();
+    offer.sdp = filterCodecs(offer.sdp, allowedCodecs);
+    await peer.pc.setLocalDescription(offer);
+    if (peer.state === "closed") {
+        return
+    }
+    console.log("sending offer to ", peer.id)
+    sendEvent({
         eventType: "newOffer",
         userId: localUserId,
-        offer: myoffer.sdp,
-        candidates: JSON.stringify(localCandidates),
+        forUser: peer.id,
+        offer: peer.pc.localDescription.sdp,
         code: "{{ .code }}",
+    })
+}
+
+async function answerPeer(peer, msg) {
+    console.log("handling offer from", peer.id)
+    peer.state = "answering";
+    await peer.pc.setRemoteDescription(new RTCSessionDescription({ "type": "offer", "sdp": msg.offer }));
+    for (const candidate of bundledCandidates(msg)) {
+        await addCandidate(peer, candidate)
     }
-    console.log("sending offer to ", id)
-    sendEvent(responseMessage)
+    await flushPendingCandidates(peer)
+    const answer = await peer.pc.createAnswer();
+    answer.sdp = filterCodecs(answer.sdp, allowedCodecs);
+    await peer.pc.setLocalDescription(answer);
+    if (peer.state === "closed") {
+        return
+    }
+    console.log("sending answer to ", peer.id)
+    sendEvent({
+        eventType: "answer",
+        userId: localUserId,
+        forUser: peer.id,
+        answer: peer.pc.localDescription.sdp,
+        code: "{{ .code }}",
+    })
+    hideLoadingModal()
+}
+
+function hideLoadingModal() {
+    document.getElementById('loadingModal').classList.add("hidden")
 }
 
 function sendEvent(msg) {
@@ -287,40 +346,64 @@ function sendEvent(msg) {
             "Content-Type": "application/json"
         },
         body: JSON.stringify(msg)
-    }).then(response => console.log(response))
-        .catch(error => console.error('Fetch error:', error));
+    }).then(response => {
+        if (!response.ok) {
+            console.error('signaling rejected', msg.eventType, response.status);
+            updateStatusText("Connection problem, try rejoining");
+        }
+    }).catch(error => console.error('Fetch error:', error));
 
 }
 
-async function newWebRTC(id, msg = {}) {
-    console.log("adding new user to pcs: ", id)
-    if (id in pcs) {
-        console.log("skipping, user exists,", id)
+// startOffer is the existing-participant side of a join: create a peer record
+// and offer. startAnswer is the joiner side: the joiner only ever answers.
+// See docs/signaling-protocol.md.
+async function startOffer(id) {
+    const existing = peers[id];
+    if (existing && existing.state !== "new") {
+        console.log("skipping offer, peer already negotiating:", id, existing.state)
         return
     }
-    if (pcs[id]) {
-        pcs[id] = null
-    }
-    pcs[id] = await new RTCPeerConnection(configuration);
-    console.log("new user pcs: ", pcs[id])
+    const peer = newPeer(id)
+    await addLocalTracks(peer)
+    await offerPeer(peer)
+}
 
-    await waitForCandidates(id)
-    if ('offer' in msg) {
-        handleOffer(msg)
-    } else {
-        handleCreateOffer(id)
+async function startAnswer(id, msg) {
+    const existing = peers[id];
+    if (existing && existing.state !== "new") {
+        // A duplicate or late offer must not renegotiate a live connection.
+        console.log("dropping offer, peer already", existing.state, ":", id)
+        return
     }
+    const peer = newPeer(id)
+    await addLocalTracks(peer)
+    await answerPeer(peer, msg)
 }
 
 function startSSE() {
-    const eventSrc = new EventSource(`/events?userId=${localUserId}&code={{ .code }}`);
+    eventSrc = new EventSource(`/events?userId=${localUserId}&code={{ .code }}`);
 
     eventSrc.onopen = () => {
         console.log("SSE connection established.");
+        sseRetryDelayMs = 1000;
+        // A reconnect is invisible to the room (the server only announces a
+        // user when their last stream closes), but peers may have missed our
+        // media state while the stream was down.
+        broadcastMediaState();
     };
 
     eventSrc.onerror = (err) => {
         console.log("SSE error:", err);
+        if (eventSrc.readyState === EventSource.CLOSED) {
+            eventSrc.close();
+            updateStatusText("Connection lost, retrying");
+            setTimeout(startSSE, sseRetryDelayMs);
+            sseRetryDelayMs = Math.min(sseRetryDelayMs * 2, sseMaxRetryDelayMs);
+        } else {
+            // readyState CONNECTING: the browser is already retrying.
+            updateStatusText("Connection lost, reconnecting");
+        }
     };
 
     eventSrc.onmessage = (event) => {
@@ -336,7 +419,8 @@ function startSSE() {
 async function eventRouter(msg) {
     switch (msg.eventType) {
         case "newUser":
-            newWebRTC(msg.userId)
+            broadcastMediaState()
+            startOffer(msg.userId)
             break
         case "acknowledge":
             startLoading(33, 100);
@@ -344,9 +428,11 @@ async function eventRouter(msg) {
             break
         case "newOffer":
             console.log("newOffer:", msg.userId)
-            newWebRTC(msg.userId, msg)
+            startAnswer(msg.userId, msg)
             break
-        case "removedUser": handleClose(msg); break
+        case "candidate": handleRemoteCandidate(msg); break
+        case "mediaState": handleMediaState(msg); break
+        case "removedUser": closePeer(msg.userId); break
         case "answer": handleAnswer(msg); break
         default: console.log("something happened but don't know what", msg); break
     }
@@ -362,36 +448,104 @@ async function startLocalVideo(userId) {
     startSSE()
 }
 
-async function handleClose(msg) {
-    if (pcs[msg.userId]) {
-        pcs[msg.userId].close();
-        pcs[msg.userId] = null;
-    }
-    removeRemoteVideoStream(msg.userId)
-    console.log("closed video of peer: ", msg.Id)
-}
-
 async function handleAnswer(msg) {
     console.log("handling answer from ", msg.userId)
-    await pcs[msg.userId].setRemoteDescription({ "type": "answer", "sdp": msg.answer });
-    handleRemoteCandidates(msg)
-
-    loadingModal = document.getElementById('loadingModal');
-    loadingModal.classList.add("hidden")
+    const peer = peers[msg.userId];
+    if (!peer) {
+        console.warn("answer for unknown peer", msg.userId);
+        return
+    }
+    if (peer.state !== "offering") {
+        console.warn("unexpected answer, peer is", peer.state, ":", msg.userId);
+        return
+    }
+    await peer.pc.setRemoteDescription({ "type": "answer", "sdp": msg.answer });
+    for (const candidate of bundledCandidates(msg)) {
+        await addCandidate(peer, candidate)
+    }
+    await flushPendingCandidates(peer)
+    hideLoadingModal()
     console.log("done handling answer")
 }
 
-async function handleRemoteCandidates(message) {
-    let candidates = JSON.parse(message.candidates)
-    console.log("candidates from ", message.userId)
-    for (c in candidates) {
-        await pcs[message["userId"]].addIceCandidate(candidates[c])
+// bundledCandidates parses the legacy `candidates` field so peers that still
+// bundle candidates into their offer/answer keep working.
+function bundledCandidates(message) {
+    try {
+        return JSON.parse(message.candidates || "[]")
+    } catch (err) {
+        console.error("unparseable candidates from", message.userId, err);
+        return []
     }
 }
 
-async function handleCandidate(candidate) {
-    if (candidate != null) {
-        console.log("new candidate")
-        localCandidates.push(candidate)
+async function addCandidate(peer, candidate) {
+    try {
+        await peer.pc.addIceCandidate(candidate)
+    } catch (err) {
+        console.error("rejected candidate from", peer.id, err);
     }
+}
+
+async function flushPendingCandidates(peer) {
+    const queued = peer.pendingCandidates;
+    peer.pendingCandidates = [];
+    for (const candidate of queued) {
+        await addCandidate(peer, candidate)
+    }
+}
+
+function handleRemoteCandidate(msg) {
+    let candidate
+    try {
+        candidate = JSON.parse(msg.candidate)
+    } catch (err) {
+        console.error("unparseable candidate from", msg.userId, err);
+        return
+    }
+    const peer = peers[msg.userId]
+    if (!peer) {
+        (earlyCandidates[msg.userId] = earlyCandidates[msg.userId] || []).push(candidate)
+        return
+    }
+    if (!peer.pc.remoteDescription) {
+        peer.pendingCandidates.push(candidate)
+        return
+    }
+    addCandidate(peer, candidate)
+}
+
+function handleMediaState(msg) {
+    let state
+    try {
+        state = JSON.parse(msg.mediaState)
+    } catch (err) {
+        console.error("unparseable mediaState from", msg.userId, err);
+        return
+    }
+    const peer = peers[msg.userId]
+    if (!peer) {
+        earlyMediaState[msg.userId] = state
+        return
+    }
+    peer.mediaState = state
+    updatePeerOverlay(msg.userId)
+}
+
+function localMediaState() {
+    const audio = localStream ? localStream.getAudioTracks().some(t => t.enabled) : true
+    const video = localStream ? localStream.getVideoTracks().some(t => t.enabled) : true
+    return { audio: audio, video: video }
+}
+
+function broadcastMediaState() {
+    if (!localUserId || localUserId === "notset") {
+        return
+    }
+    sendEvent({
+        eventType: "mediaState",
+        userId: localUserId,
+        mediaState: JSON.stringify(localMediaState()),
+        code: "{{ .code }}",
+    })
 }

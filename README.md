@@ -39,6 +39,17 @@ you can also deploy your own server using the docker image provided at dockerhub
 
 Note: The frontend features require an HTTPS connection, so any build should be done behind one. I have included the `generate_cert.go` standard library for quick mock certificate creation for local testing.
 
+## Testing
+
+- `make test` runs the Go unit/integration tests (room lifecycle, signaling
+  routing, isolation, disconnects) under the race detector.
+- `make test-e2e` runs the Playwright suite in `tests/e2e`, which drives one
+  Chromium process per peer with deterministic fake camera/microphone input and
+  asserts real media over `getStats` and pixel/tone identity.
+
+The signaling contract is documented in [docs/signaling-protocol.md](docs/signaling-protocol.md),
+and the remaining hardening work in [docs/hardening-plan.md](docs/hardening-plan.md).
+
 ## Browser Support
 
 WebRTC has broad browser support

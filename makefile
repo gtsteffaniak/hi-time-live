@@ -18,6 +18,9 @@ run:
 test:
 	go test -v --race ./...
 
+test-e2e:
+	cd tests/e2e && npm install && npx playwright install --with-deps chromium && npx playwright test
+
 lint:
 	golangci-lint run
 

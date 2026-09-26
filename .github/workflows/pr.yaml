@@ -8,36 +8,57 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with:
-          go-version: 1.22.0
       - run: go test -race -v ./...
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
-        with:
-          version: v1.58
   format:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with:
-          go-version: 1.22.0
       - run: go fmt ./...
+  e2e:
+    name: playwright e2e
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
+      - run: npm ci
+        working-directory: tests/e2e
+      - run: npm run typecheck
+        working-directory: tests/e2e
+      - run: npx playwright install --with-deps chromium firefox
+        working-directory: tests/e2e
+      - run: go build ./...
+      - run: npx playwright test
+        working-directory: tests/e2e
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: |
+            tests/e2e/playwright-report
+            tests/e2e/test-results
+          retention-days: 7
 
-  push_pr_to_registry:
-    name: Push PR
-    runs-on: ubuntu-latest
+  docker_build:
+    name: Build Docker
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,13 +82,13 @@ jobs:
         uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
         with:
           images: gtstef/hitime
-      - name: Build and push
+      - name: Build
         uses: docker/build-push-action@v5
         with:
           context: .
           build-args: |
             VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
           file: ./Dockerfile
-          push: true
+          push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

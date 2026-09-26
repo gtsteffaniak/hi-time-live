@@ -17,6 +17,10 @@ type room struct {
 var roomLock sync.Mutex
 var rooms = map[string]*room{}
 
+// uuidRegex matches the room codes handed out by the index page.
+var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// getRoom returns the room for a code, creating it if needed.
 func getRoom(roomId string) *room {
 	roomLock.Lock()
 	defer roomLock.Unlock()
@@ -29,43 +33,64 @@ func getRoom(roomId string) *room {
 	return rooms[roomId]
 }
 
-func attemptJoin(code string, user string) (int, error) {
+// joinResult describes what a connection attempt did to the room.
+type joinResult struct {
+	numUsers  int
+	firstJoin bool // false when the same user id is already present (a reconnect)
+}
+
+func attemptJoin(code string, user string) (joinResult, error) {
 	if !validCode(code) {
-		return 0, fmt.Errorf("could not validate code: %s", code)
+		return joinResult{}, fmt.Errorf("could not validate code: %s", code)
+	}
+	if user == "" {
+		return joinResult{}, fmt.Errorf("empty user id")
 	}
 	room := getRoom(code)
 	room.mu.Lock()
 	defer room.mu.Unlock()
 	if slices.Contains(room.users, user) {
-		return 0, fmt.Errorf("user already exists: %v ", user)
+		// A reconnecting client (SSE reconnects on its own) must not be rejected,
+		// otherwise it stays in the room list but never gets acknowledged again.
+		return joinResult{numUsers: len(room.users), firstJoin: false}, nil
 	}
 	room.users = append(room.users, user)
-	num := len(room.users)
-	return num, nil
+	return joinResult{numUsers: len(room.users), firstJoin: true}, nil
 }
 
 func validCode(code string) bool {
-	// Regular expression to match UUID format
-	uuidRegex := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-	valid := uuidRegex.MatchString(code)
-	if !valid {
-		fmt.Printf("invalid code: '%s'", code)
-	}
-	// Check if the code matches the UUID format
-	return valid
+	return uuidRegex.MatchString(code)
 }
 
-func removeUserFromRoom(code string, id string) {
-	r := getRoom(code)
+// roomUsers returns a copy of the current membership, for tests and diagnostics.
+func roomUsers(code string) []string {
+	roomLock.Lock()
+	r, ok := rooms[code]
+	roomLock.Unlock()
+	if !ok {
+		return nil
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	withoutUser := []string{}
-	for _, u := range r.users {
-		if u != id {
-			withoutUser = append(withoutUser, u)
-		}
+	return slices.Clone(r.users)
+}
+
+// removeUserFromRoom drops a user and forgets the room once it is empty, so a
+// long-running server does not accumulate one entry per room ever created.
+func removeUserFromRoom(code string, id string) {
+	roomLock.Lock()
+	defer roomLock.Unlock()
+	r, ok := rooms[code]
+	if !ok {
+		return
 	}
-	r.users = withoutUser
+	r.mu.Lock()
+	r.users = slices.DeleteFunc(r.users, func(u string) bool { return u == id })
+	empty := len(r.users) == 0
+	r.mu.Unlock()
+	if empty {
+		delete(rooms, code)
+	}
 }
 
 func roomHandler(w http.ResponseWriter, r *http.Request) {
@@ -78,15 +103,12 @@ func roomHandler(w http.ResponseWriter, r *http.Request) {
 		"code":      id,
 	}
 	if !validCode(id) {
-		err := templateRenderer.Render(w, "invalidRoom.html", data)
-		if err != nil {
-			log.Println("could not render invalidRoom.html template", http.StatusInternalServerError)
+		if err := templateRenderer.RenderWithStatus(w, http.StatusNotFound, "invalidRoom.html", data); err != nil {
+			log.Println("could not render invalidRoom.html template:", err)
 		}
-
-	} else {
-		err := templateRenderer.Render(w, "room.html", data)
-		if err != nil {
-			log.Println("could not render room.html template", http.StatusInternalServerError)
-		}
+		return
+	}
+	if err := templateRenderer.Render(w, "room.html", data); err != nil {
+		log.Println("could not render room.html template:", err)
 	}
 }
