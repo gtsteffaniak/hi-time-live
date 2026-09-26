@@ -27,6 +27,12 @@ type TemplateRenderer struct {
 
 // Render renders a template document with headers and data
 func (t *TemplateRenderer) Render(w http.ResponseWriter, name string, data interface{}) error {
+	return t.RenderWithStatus(w, http.StatusOK, name, data)
+}
+
+// RenderWithStatus renders a template, setting response headers before the
+// status code so that they are not silently discarded.
+func (t *TemplateRenderer) RenderWithStatus(w http.ResponseWriter, status int, name string, data interface{}) error {
 	if t.devMode {
 		if err := t.loadTemplates(); err != nil {
 			slog.Error("unable to parse templates", "error", err)
@@ -36,7 +42,8 @@ func (t *TemplateRenderer) Render(w http.ResponseWriter, name string, data inter
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("X-Accel-Expires", "0")
-	w.Header().Set("Transfer-Encoding", "identity")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
 	// Execute the template with the provided data
 	return t.templates.ExecuteTemplate(w, name, data)
 }

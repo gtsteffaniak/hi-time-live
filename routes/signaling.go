@@ -2,15 +2,29 @@ package routes
 
 import (
 	"encoding/json"
-	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 )
 
+const (
+	// maxEventBody caps a signaling payload. SDP with bundled candidates is a few
+	// KB; anything larger is a bug or an attack.
+	maxEventBody = 256 << 10
+	// messageBuffer is how far a slow client may fall behind before its messages
+	// are dropped instead of stalling the sender.
+	messageBuffer = 32
+	// heartbeatInterval keeps idle SSE streams alive through proxies and lets the
+	// server notice dead sockets.
+	heartbeatInterval = 20 * time.Second
+)
+
 type connection struct {
+	connId    string
 	userId    string
 	roomId    string
 	messageCh chan eventMessage
@@ -31,164 +45,196 @@ type eventMessage struct {
 	Time       string `json:"time,omitempty"`
 }
 
+// clientEventTypes are the event types a browser is allowed to POST. Anything
+// else is rejected rather than forwarded, so the signaling channel cannot be
+// used as a generic room-wide message bus.
+var clientEventTypes = map[string]bool{
+	"newOffer": true,
+	"answer":   true,
+}
+
 // Handle SSE connection
 func sseHandler(w http.ResponseWriter, r *http.Request) {
-	// Set headers for SSE
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*") // For CORS support
-
-	// Check if the writer supports flushing
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		// Log the issue for debugging purposes
-		fmt.Println("Error: ResponseWriter does not support Flusher")
 		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
 		return
 	}
 
-	// Generate unique ID for this connection
 	userId := r.URL.Query().Get("userId")
 	roomId := r.URL.Query().Get("code")
 	if userId == "" || roomId == "" {
 		http.Error(w, "Missing userId or roomId", http.StatusBadRequest)
 		return
 	}
-
-	messageCh := make(chan eventMessage, 10)
-	connId := userId + "-" + strings.Split(uuid.New().String(), "-")[0]
-	conn := &connection{
-		roomId:    roomId,
-		userId:    userId,
-		messageCh: messageCh,
+	if !validCode(roomId) {
+		http.Error(w, "Invalid room code", http.StatusBadRequest)
+		return
 	}
 
-	// Add connection to the map
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	conn := &connection{
+		connId:    userId + "-" + strings.Split(uuid.New().String(), "-")[0],
+		userId:    userId,
+		roomId:    roomId,
+		messageCh: make(chan eventMessage, messageBuffer),
+	}
+
 	connLock.Lock()
-	connections[connId] = conn
+	connections[conn.connId] = conn
 	connLock.Unlock()
 
 	defer func() {
 		connLock.Lock()
-		delete(connections, connId)
+		delete(connections, conn.connId)
+		// Another tab or a reconnect may still hold the same user id in this room;
+		// only announce the departure once the last one is gone.
+		stillPresent := false
+		for _, other := range connections {
+			if other.roomId == roomId && other.userId == userId {
+				stillPresent = true
+				break
+			}
+		}
 		connLock.Unlock()
-		close(messageCh)
+		if stillPresent {
+			return
+		}
+		removeUserFromRoom(roomId, userId)
+		sendToOthers(roomId, userId, eventMessage{Code: roomId, UserId: userId, EventType: "removedUser"})
+		slog.Info("client disconnected", "user", userId, "room", roomId)
 	}()
 
-	// Listen for messages and client disconnection
+	if err := writeEvent(w, flusher, eventMessage{EventType: "acknowledge"}); err != nil {
+		slog.Error("could not send acknowledgement", "user", userId, "error", err)
+		return
+	}
+	announceJoin(roomId, userId)
+
+	heartbeat := time.NewTicker(heartbeatInterval)
+	defer heartbeat.Stop()
 	clientGone := r.Context().Done()
-	// Send an initial ping to confirm the connection
-	ack, err := json.Marshal(eventMessage{EventType: "acknowledge"})
-	if err != nil {
-		fmt.Println("error marshalling JSON", err)
-		return
-	}
-	doNewUserStuff(eventMessage{Code: roomId, UserId: userId})
-	_, err = fmt.Fprintf(w, "data: %s\n\n", ack)
-	if err != nil {
-		fmt.Println("error initial ping", err)
-		return
-	}
-	flusher.Flush()
 	for {
 		select {
 		case <-clientGone:
-			fmt.Println("client disconnected", userId)
-			removeUserFromRoom(roomId, userId)
-			removedUserMsg := eventMessage{Code: roomId, UserId: userId, EventType: "removedUser"}
-			sendToOthers(connId, removedUserMsg)
 			return
-		case msg := <-messageCh:
-			fmt.Println("sending message to", userId, msg.EventType)
-			jsonString, err := json.Marshal(msg)
-			if err != nil {
-				fmt.Println("error marshalling JSON", err)
-				return
-			}
-			_, err = fmt.Fprintf(w, "data: %s\n\n", jsonString)
-			if err != nil {
-				fmt.Println("error sending message", err)
+		case <-heartbeat.C:
+			if _, err := w.Write([]byte(": keepalive\n\n")); err != nil {
 				return
 			}
 			flusher.Flush()
+		case msg := <-conn.messageCh:
+			if err := writeEvent(w, flusher, msg); err != nil {
+				slog.Error("could not send event", "user", userId, "type", msg.EventType, "error", err)
+				return
+			}
 		}
 	}
+}
+
+func writeEvent(w http.ResponseWriter, flusher http.Flusher, msg eventMessage) error {
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	if _, err = w.Write([]byte("data: " + string(payload) + "\n\n")); err != nil {
+		return err
+	}
+	flusher.Flush()
+	return nil
 }
 
 // Handle incoming events
 func postEventHandler(w http.ResponseWriter, r *http.Request) {
 	var event eventMessage
-	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxEventBody)).Decode(&event); err != nil {
 		http.Error(w, "Error decoding JSON", http.StatusBadRequest)
+		return
+	}
+	if !clientEventTypes[event.EventType] {
+		http.Error(w, "Unknown event type", http.StatusBadRequest)
+		return
+	}
+	if !validCode(event.Code) || event.UserId == "" {
+		http.Error(w, "Missing or invalid room code or user id", http.StatusBadRequest)
+		return
+	}
+	// The sender must have a live stream in the room it claims to post to, so a
+	// stranger cannot inject offers into someone else's call.
+	if !hasConnection(event.Code, event.UserId) {
+		http.Error(w, "Unknown sender for room", http.StatusForbidden)
 		return
 	}
 
 	switch event.EventType {
 	case "newOffer":
-		sendToOthers(event.UserId, event)
+		sendToOthers(event.Code, event.UserId, event)
 	case "answer":
 		if event.ForUser == "" {
-			w.WriteHeader(http.StatusBadRequest)
+			http.Error(w, "Missing forUser", http.StatusBadRequest)
 			return
 		}
-		sendMessageToUser(event.ForUser, event)
-	default:
-		fmt.Println("Unknown event type: ", event.EventType)
-		broadcastToRoom(event.Code, event)
+		sendMessageToUser(event.Code, event.ForUser, event)
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func sendToOthers(userId string, event eventMessage) {
+func hasConnection(roomId, userId string) bool {
 	connLock.Lock()
 	defer connLock.Unlock()
-
-	// Iterate through all active connections
 	for _, conn := range connections {
-		if conn.userId != userId {
-			// Send the message to the connection's channel
-			select {
-			case conn.messageCh <- event:
-			default:
-			}
+		if conn.roomId == roomId && conn.userId == userId {
+			return true
+		}
+	}
+	return false
+}
+
+// send never blocks: a client that cannot keep up loses messages rather than
+// stalling every other participant behind the connection lock.
+func (c *connection) send(msg eventMessage) {
+	select {
+	case c.messageCh <- msg:
+	default:
+		slog.Warn("dropping event for slow client", "user", c.userId, "type", msg.EventType)
+	}
+}
+
+// sendToOthers delivers a message to every other participant of one room.
+func sendToOthers(roomId, userId string, event eventMessage) {
+	connLock.Lock()
+	defer connLock.Unlock()
+	for _, conn := range connections {
+		if conn.roomId == roomId && conn.userId != userId {
+			conn.send(event)
 		}
 	}
 }
 
-// Broadcast message to all connections in the same room
-func broadcastToRoom(roomId string, message eventMessage) {
+// sendMessageToUser delivers a message to every stream a user has open in a room.
+func sendMessageToUser(roomId, userId string, message eventMessage) {
 	connLock.Lock()
 	defer connLock.Unlock()
 	for _, conn := range connections {
-		if conn.roomId == roomId {
-			conn.messageCh <- message
+		if conn.roomId == roomId && conn.userId == userId {
+			conn.send(message)
 		}
 	}
 }
 
-// Send a message to a specific user
-func sendMessageToUser(userId string, message eventMessage) {
-	connLock.Lock()
-	defer connLock.Unlock()
-	for _, conn := range connections {
-		if conn.userId == userId {
-			conn.messageCh <- message
-			return
-		}
-	}
-}
-
-func doNewUserStuff(message eventMessage) {
-	var err error
-	numUsers, err := attemptJoin(message.Code, message.UserId)
+// announceJoin registers the user with the room and tells the existing
+// participants to start negotiating with them.
+func announceJoin(roomId, userId string) {
+	result, err := attemptJoin(roomId, userId)
 	if err != nil {
-		fmt.Println("error joining room", err)
+		slog.Error("error joining room", "room", roomId, "user", userId, "error", err)
 		return
 	}
-	sendMessageToUser(message.UserId, eventMessage{EventType: "acknowledge"})
-	if numUsers > 1 {
-		fmt.Println("sending to others", message.UserId)
-		sendToOthers(message.UserId, eventMessage{EventType: "newUser", UserId: message.UserId})
+	if result.firstJoin && result.numUsers > 1 {
+		sendToOthers(roomId, userId, eventMessage{EventType: "newUser", UserId: userId, Code: roomId})
 	}
 }

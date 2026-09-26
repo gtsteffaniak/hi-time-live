@@ -1,0 +1,63 @@
+# Hardening plan
+
+Goal: a signaling contract that is explicit enough to test, and tests that fail
+for real product reasons rather than DOM coincidences.
+
+## Done in this change
+
+### Server
+
+- Protocol written down (`docs/signaling-protocol.md`) and enforced: unknown
+  event types, malformed room codes and missing user ids are rejected at the
+  edge.
+- Room isolation and sender authorization are structural (`403` for a sender
+  with no stream in the room it posts to) rather than implicit.
+- SSE streams are keyed per connection, bounded (32 messages, non-blocking
+  send), heartbeated every 20s, and announce `removedUser` only when a user's
+  last stream closes — so a reload no longer evicts the reloading user from the
+  other participants' UIs.
+- Room map entries are deleted when empty; `attemptJoin` distinguishes a first
+  join from a reconnect so the mesh is not re-offered on every tab refresh.
+- `invalidRoom.html` rendered a misspelled partial and therefore served an empty
+  200. It now renders and returns `404`.
+- Routes are constructed by `NewRouter()` so tests can serve the real mux.
+
+### Tests
+
+- Go: room lifecycle, concurrent join/leave under `-race`, input validation,
+  offer/answer routing, cross-room leakage, duplicate tabs, disconnect
+  announcements, slow clients, oversized payloads, page rendering.
+- Playwright (`tests/e2e`): one Chromium *process* per peer (Chrome's fake-media
+  flags are process-wide), each fed a deterministic solid-colour Y4M video and a
+  distinct sine-wave WAV. That makes identity assertable: the remote tile's
+  centre pixel must be the right colour and its dominant FFT frequency the right
+  tone, so a mis-routed stream fails instead of passing as "a video element
+  exists".
+- Liveness comes from `getStats` (`framesDecoded`, `bytesReceived`,
+  `totalAudioEnergy`) and `RTCPeerConnection.connectionState`, not from
+  timeouts.
+
+Covered scenarios: two-peer call with media identity, peer leave, three-peer
+full mesh, leave from a three-way call, room isolation, invalid room, reload and
+rejoin, aborted signaling requests, unauthorized sender, mute, video disable.
+
+## Next steps (not in this change)
+
+1. **Frontend state machine.** `templates/js/signaling.js` keeps mutable
+   top-level state (`pcs`, a shared `localCandidates` array) and waits on fixed
+   timeouts while ICE gathers. Replace it with one explicit per-peer object
+   (`new` -> `offering`/`answering` -> `connected` -> `closed`) that owns its own
+   candidate list, so a slow peer cannot inherit another peer's candidates and a
+   late message for a closed peer is dropped instead of throwing.
+2. **Trickle ICE.** Today candidates are batched into the offer/answer after a
+   fixed delay. A `candidate` event type would cut setup latency and remove the
+   sleep.
+3. **Error surfacing.** `sendEvent` ignores the HTTP status; a `403`/`400`
+   currently looks identical to success. Surface failures in the UI and retry
+   the SSE stream with backoff on disconnect.
+4. **Explicit media state.** Mute/disable only flips `track.enabled`, so the
+   remote side sees silence and black rather than a labelled state. A
+   `mediaState` event would let the UI show who is muted.
+5. **Test matrix.** Firefox peers (Playwright supports its own fake-media
+   prefs), simulated packet loss/renegotiation, and a soak test for room-map
+   growth.

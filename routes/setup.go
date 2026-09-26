@@ -7,13 +7,18 @@ import (
 	"net/http"
 )
 
-func StartRouter(devMode bool, port int) {
+// NewRouter builds the application's routes. Tests serve it directly.
+func NewRouter() *http.ServeMux {
 	router := http.NewServeMux()
 	router.HandleFunc("GET /events", sseHandler)       // Server-Sent Events endpoint
 	router.HandleFunc("POST /event", postEventHandler) // Rest endpoint for client event responses
 	router.HandleFunc("GET /room", roomHandler)
 	router.HandleFunc("GET /", staticHandler)
-	router.HandleFunc("/", indexHandler)
+	return router
+}
+
+func StartRouter(devMode bool, port int) {
+	router := NewRouter()
 	// Register custom template renderer
 	templateRenderer = &TemplateRenderer{
 		templateDir: "templates",
