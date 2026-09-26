@@ -39,3 +39,6 @@ RUN mkdir -p /results \
 FROM scratch
 COPY --from=e2e /results /results
 CMD ["/results"]
+
+# small export for speed
+FROM scratch
