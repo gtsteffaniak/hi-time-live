@@ -5,7 +5,22 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 )
+
+// BasePath is the URL prefix the app is served under (e.g. "/hitime" when
+// reverse-proxied at https://example.com/hitime/). Empty means the root.
+var BasePath string
+
+// NormalizeBasePath returns p with a single leading slash and no trailing
+// slash; "" and "/" both mean the root and normalize to "".
+func NormalizeBasePath(p string) string {
+	p = strings.Trim(strings.TrimSpace(p), "/")
+	if p == "" {
+		return ""
+	}
+	return "/" + p
+}
 
 // NewRouter builds the application's routes. Tests serve it directly.
 func NewRouter() *http.ServeMux {
@@ -17,8 +32,28 @@ func NewRouter() *http.ServeMux {
 	return router
 }
 
-func StartRouter(devMode bool, port int) {
-	router := NewRouter()
+// MountRouter serves router under basePath. Requests outside the prefix get a
+// 404, and the bare prefix redirects to the trailing-slash form so relative
+// URLs in the pages resolve correctly.
+func MountRouter(router http.Handler, basePath string) http.Handler {
+	basePath = NormalizeBasePath(basePath)
+	if basePath == "" {
+		return router
+	}
+	outer := http.NewServeMux()
+	outer.Handle(basePath+"/", http.StripPrefix(basePath, router))
+	outer.HandleFunc(basePath, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, basePath+"/", http.StatusMovedPermanently)
+	})
+	return outer
+}
+
+func StartRouter(devMode bool, port int, basePath string) {
+	BasePath = NormalizeBasePath(basePath)
+	if BasePath != "" {
+		log.Printf("Serving under base path: %s/", BasePath)
+	}
+	router := MountRouter(NewRouter(), BasePath)
 	// Register custom template renderer
 	templateRenderer = &TemplateRenderer{
 		templateDir: "templates",

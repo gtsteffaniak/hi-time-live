@@ -96,6 +96,7 @@ func removeUserFromRoom(code string, id string) {
 func roomHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	data := map[string]interface{}{}
+	data["basePath"] = BasePath
 	data["code"] = id
 	data["privacyModal"] = map[string]string{
 		"modalType": "privacy",

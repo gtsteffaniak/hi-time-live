@@ -90,7 +90,7 @@ export class Peer {
 
   /** Opens the room and completes the privacy/name modal. */
   async join(roomCode: string): Promise<void> {
-    await this.page.goto(`/room?id=${roomCode}`);
+    await this.page.goto(`room?id=${roomCode}`);
     await this.page.fill('#nameInput', this.opts.name);
     await this.page.click('#start-button');
     await this.page.waitForFunction(() => {
@@ -107,7 +107,7 @@ export class Peer {
   async joinSecondTab(roomCode: string): Promise<Page> {
     const tab = await this.context.newPage();
     tab.on('pageerror', (e) => this.pageErrors.push(String(e)));
-    await tab.goto(`/room?id=${roomCode}`);
+    await tab.goto(`room?id=${roomCode}`);
     await tab.fill('#nameInput', this.opts.name);
     await tab.click('#start-button');
     await tab.waitForFunction(() => {

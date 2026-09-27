@@ -47,6 +47,12 @@ jobs:
       - run: go build ./...
       - run: npx playwright test
         working-directory: tests/e2e
+      - name: playwright e2e under a base path
+        run: npx playwright test --grep-invert firefox
+        working-directory: tests/e2e
+        env:
+          HITIME_PORT: 9013
+          HITIME_BASE_PATH: /hitime
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:

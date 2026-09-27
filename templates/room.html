@@ -2,7 +2,7 @@
 <html lang="en">
 
 <head>
-  {{ template "components/headerInfo.html" }}
+  {{ template "components/headerInfo.html" . }}
   <style>
     {{ template "css/roomStyle.css" }}
   </style>
@@ -28,7 +28,7 @@
 
       <div id="muteButton" class="button padded-right" onclick="toggleMute()">Mute</div>
       <div id="vidButton" class="button padded-right" onclick="toggleVid()">Disable Video</div>
-      <a class="button" href="/">
+      <a class="button" href=".">
         Leave
         <span style="margin-left: 4px" class="material-symbols-outlined">
           exit_to_app
