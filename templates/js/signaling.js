@@ -340,7 +340,7 @@ function hideLoadingModal() {
 
 function sendEvent(msg) {
     // Exchange the answer with the remote peer
-    fetch("/event", {
+    fetch("event", {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
@@ -382,7 +382,7 @@ async function startAnswer(id, msg) {
 }
 
 function startSSE() {
-    eventSrc = new EventSource(`/events?userId=${localUserId}&code={{ .code }}`);
+    eventSrc = new EventSource(`events?userId=${localUserId}&code={{ .code }}`);
 
     eventSrc.onopen = () => {
         console.log("SSE connection established.");

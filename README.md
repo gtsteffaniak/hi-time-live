@@ -37,6 +37,23 @@ A deployed version is available at https://hitime.live/.
 
 you can also deploy your own server using the docker image provided at dockerhub with `gtstef/hitime` or building locally.
 
+### Serving under a URL prefix
+
+To run behind a reverse proxy at a sub path (e.g. `https://example.com/hitime/`),
+set `BASE_PATH=/hitime` (or pass `--base-path /hitime`). The app then serves
+everything under `/hitime/`, redirects `/hitime` to `/hitime/`, and returns 404
+for paths outside the prefix. Proxy the location through unchanged, without
+stripping the prefix, and keep buffering off for the `/events` SSE stream:
+
+```nginx
+location /hitime/ {
+    proxy_pass http://hitime:9012;
+    proxy_http_version 1.1;
+    proxy_buffering off;
+    proxy_read_timeout 1h;
+}
+```
+
 Note: The frontend features require an HTTPS connection, so any build should be done behind one. I have included the `generate_cert.go` standard library for quick mock certificate creation for local testing.
 
 ## Testing
@@ -46,6 +63,8 @@ Note: The frontend features require an HTTPS connection, so any build should be 
 - `make test-e2e` runs the Playwright suite in `tests/e2e`, which drives one
   Chromium process per peer with deterministic fake camera/microphone input and
   asserts real media over `getStats` and pixel/tone identity.
+- `make test-e2e-base-path` runs the same suite against the app mounted under
+  `/hitime` (`HITIME_BASE_PATH`), which is how it is deployed behind gportal.
 
 The signaling contract is documented in [docs/signaling-protocol.md](docs/signaling-protocol.md),
 and the remaining hardening work in [docs/hardening-plan.md](docs/hardening-plan.md).

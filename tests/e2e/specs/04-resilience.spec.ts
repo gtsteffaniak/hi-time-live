@@ -49,7 +49,7 @@ test('the server rejects signalling from a client that is not in the room', asyn
   await alice.join(code);
 
   const status = await alice.page.evaluate(async (roomId) => {
-    const res = await fetch('/event', {
+    const res = await fetch('event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ eventType: 'newOffer', userId: 'intruder__0000', code: roomId, offer: 'v=0' }),
