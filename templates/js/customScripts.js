@@ -93,7 +93,7 @@ function setControlsVisible(visible) {
   const ctab = document.getElementById('ctab');
   const controls = document.getElementById('controls');
   const videocontainer = document.getElementById('video-container');
-  videocontainer.classList.toggle("bottom-padding", visible)
+  videocontainer.classList.toggle("padding-bottom", visible)
   controls.classList.toggle("fly-in", visible)
   ctab.classList.toggle("fly-in", visible)
 }

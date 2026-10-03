@@ -1,6 +1,17 @@
 
+#video-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+#video-stage > * {
+  pointer-events: auto;
+}
+
 #controls {
-  z-index: 4;
+  z-index: 1000;
   position: fixed;
   bottom: -6em;
   display: flex;
@@ -9,6 +20,8 @@
   align-items: center;
   width: 100%;
   transition: 0.5s;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0.35) 70%, transparent 100%);
+  pointer-events: auto;
 }
 
 @media only screen and (max-width: 800px) {
@@ -34,6 +47,27 @@
   padding-top: 2em;
   display: flex;
   flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5em;
+  max-width: 100%;
+}
+
+.layout-controls {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35em;
+  margin-right: 0.5em;
+  padding-right: 0.75em;
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.layout-mode-label {
+  font-size: 0.85rem;
+  opacity: 0.85;
+  min-width: 5.5em;
+  text-align: center;
 }
 
 #localVideo:hover {
@@ -55,65 +89,196 @@
   margin-bottom: 1em;
   margin-right: 1em;
   position: fixed;
-  z-index: 3;
+  z-index: 900;
+  border-radius: 0.75em;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
 }
 
-/* Main container spans the full viewport */
 #video-container {
-  display: grid;
-  grid-template-columns: repeat(1, 1fr); /* one columns */
-  gap: 1em; /* Spacing between grid items */
-  box-sizing: border-box; /* Includes padding/border in dimensions */
-  overflow: hidden; /* Prevents any overflow */
-  padding: 1em;
-  max-width: 1200px;
-  max-height: 1000px;
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  overflow: visible;
+  padding: 0;
+  max-width: none;
+  max-height: none;
   width: 100%;
   height: 100%;
+}
+
+#video-container.layout-grid .participant-window,
+#video-container.layout-spotlight .participant-window,
+#video-container.layout-free .participant-window {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: black;
+  border: 2px solid #1976ed;
+  border-radius: 0.75em;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+#video-container.layout-free .participant-window:active {
+  border-color: #7d0e9e;
 }
 
 .padding-bottom {
   padding-bottom: 5em !important;
 }
 
-.one {
-  grid-template-columns: repeat(1, 1fr) !important; /* One column */
+.participant-window.is-minimized {
+  cursor: pointer;
+  opacity: 0.92;
 }
 
-.two {
-  grid-template-columns: repeat(2, 1fr) !important; /* Two columns */
+.participant-window.is-minimized .window-resize-handle,
+.participant-window.is-minimized .window-body video {
+  pointer-events: none;
 }
 
-/* Styling for each video container */
-#video-container > div {
+.participant-window.is-minimized .window-chrome {
+  padding: 2px 6px;
+}
+
+.participant-window.is-spotlight-strip {
+  cursor: pointer;
+}
+
+.participant-window.is-spotlight-strip:hover {
+  border-color: #7d0e9e;
+}
+
+.participant-window.is-spotlight-main {
+  border-color: #7d0e9e;
+  box-shadow: 0 12px 40px rgba(125, 14, 158, 0.25);
+}
+
+.window-chrome {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 8px 4px 10px;
+  background: rgba(18, 18, 22, 0.92);
+  border-bottom: 1px solid rgba(25, 118, 237, 0.35);
+  flex-shrink: 0;
+  user-select: none;
+  z-index: 2;
+}
+
+.window-drag-handle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  cursor: grab;
+  min-width: 0;
+}
+
+.window-drag-handle:active {
+  cursor: grabbing;
+}
+
+.window-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.window-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.window-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.window-btn .material-symbols-outlined {
+  font-size: 20px;
+}
+
+.window-btn:hover,
+.window-btn:focus {
+  background: rgba(255, 255, 255, 0.12);
+  outline: none;
+}
+
+.window-body {
+  flex: 1;
   display: flex;
   flex-direction: column-reverse;
   justify-content: center;
   align-items: center;
-  overflow: hidden; /* Ensures no content spills out */
-  background-color: black;
-  border: 2px solid #1976ed;
-  border-radius: 1em;
-  width: 100%; /* Ensures it fully fills the grid cell */
-  height: 100%; /* Ensures it fully fills the grid cell */
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
 }
 
-/* Video styling */
-video {
-  width: 100%; /* Ensures it fully fills the parent container */
-  height: calc(100% - 1.5em);
-  border-radius: 1em;
+.window-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  z-index: 3;
+  background: linear-gradient(135deg, transparent 50%, rgba(25, 118, 237, 0.65) 50%);
+  border-bottom-right-radius: 0.65em;
+}
+
+#video-container.layout-grid .window-resize-handle,
+#video-container.layout-spotlight .window-resize-handle {
+  display: none;
+}
+
+.participant-window video {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
   display: block;
-  /*object-fit: cover; /* Ensures the video covers its container proportionally */
+  object-fit: contain;
+  flex: 1;
+  min-height: 0;
 }
 
 .video-overlay {
   width: 100%;
   text-align: center;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.55));
 }
 
 .video-overlay > p {
   margin: 0;
   color: rgba(255, 255, 255, 0.8);
-  padding-top: 1.5em;
+  padding: 0.35em 0.5em 0.5em;
+  font-size: 0.85rem;
+}
+
+.participant-window.is-minimized .video-overlay {
+  display: none;
 }

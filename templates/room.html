@@ -11,13 +11,25 @@
 <body>
   {{ template "components/modals/privacyModal.html" . }}
   {{ template "components/modals/loadingModal.html" . }}
-  <video id="localVideo" class="hidden" autoplay muted playsinline></video>
-  <div id="video-container" class="hidden">
+  <div id="video-stage">
+    <div id="video-container" class="hidden layout-grid">
+    </div>
   </div>
+  <video id="localVideo" class="hidden" autoplay muted playsinline></video>
   <div id="controls" class="hidden">
     <div id="ctab" onclick="showControls()" class="button"><span
         class="material-symbols-outlined">keyboard_arrow_up</span></div>
     <div class="control-options">
+      <div class="layout-controls">
+        <div id="layoutCycleButton" class="button" title="Cycle layout: Grid, Spotlight, Free">
+          <span class="material-symbols-outlined">view_comfy_alt</span>
+          <span id="layoutModeLabel" class="layout-mode-label">Grid</span>
+        </div>
+        <div id="resetLayoutButton" class="button" title="Reset windows to default layout">
+          <span class="material-symbols-outlined">restart_alt</span>
+          Reset
+        </div>
+      </div>
       <!--
       <div id="switchButton" class="button padded-right" onclick="switchMedia()"><span
           class="material-symbols-outlined">
@@ -40,6 +52,7 @@
   <script>
     {{ template "js/signaling.js". }}
     {{ template "js/customScripts.js". }}
+    {{ template "js/windowLayout.js" }}
     {{ template "js/videoControls.js". }}
     {{ template "js/room.js" }}
   </script>

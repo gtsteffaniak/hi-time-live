@@ -56,17 +56,24 @@ function createRemoteVideoStream(id) {
     videoElement.autoplay = true;
     videoElement.playsinline = true;
 
+    const bodyDiv = document.createElement('div');
+    bodyDiv.classList.add('window-body');
+
     const videoOverlay = document.createElement('div');
     videoOverlay.id = id + '-video-overlay';
     videoOverlay.classList.add("video-overlay")
 
-    // Append the video element to the container div
-    containerDiv.appendChild(videoElement);
-    containerDiv.appendChild(videoOverlay);
+    bodyDiv.appendChild(videoElement);
+    bodyDiv.appendChild(videoOverlay);
+    containerDiv.appendChild(bodyDiv);
 
     // Append the container div to the main video container
     const videoContainer = document.getElementById('video-container');
     videoContainer.appendChild(containerDiv);
+
+    if (typeof registerParticipantWindow === 'function') {
+        registerParticipantWindow(containerDiv, id);
+    }
 
     // Set the ontrack event handler for the peer connection
     peers[id].pc.ontrack = (event) => {
@@ -115,33 +122,18 @@ function updatePeerOverlay(id) {
 
 function updateContainerClass() {
     const videoContainer = document.getElementById('video-container');
-    const childrenCount = videoContainer.children.length;
-    videoContainer.classList.remove('one');
-    videoContainer.classList.remove('two');
+    const childrenCount = videoContainer.querySelectorAll('.participant-window').length;
 
     if (childrenCount > 0) {
         videoContainer.classList.remove('hidden');
         if (window.innerWidth > 800) {
-            videoContainer.classList.add("padding-bottom")
             setControlsVisible(true)
         }
     } else {
         videoContainer.classList.add('hidden');
     }
-    if (childrenCount === 1) {
-        videoContainer.classList.add('one');
-        return;
-    }
-    if (childrenCount === 2) {
-        if (window.innerWidth > 800) {
-            videoContainer.classList.add('two');
-        } else {
-            videoContainer.classList.add('one');
-        }
-    }
-    if (childrenCount === 4 || childrenCount === 3) {
-        videoContainer.classList.add('two');
-        return;
+    if (typeof applyParticipantLayout === 'function') {
+        applyParticipantLayout();
     }
 }
 
@@ -149,6 +141,9 @@ function updateContainerClass() {
 window.addEventListener("resize", updateContainerClass);
 
 function removeRemoteVideoStream(id) {
+    if (typeof unregisterParticipantWindow === 'function') {
+        unregisterParticipantWindow(id);
+    }
     const containerDiv = document.getElementById(id + '-container');
     if (containerDiv) {
         containerDiv.remove(); // Removes the container div from the DOM
