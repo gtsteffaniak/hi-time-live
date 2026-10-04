@@ -287,6 +287,8 @@
     } else if (layoutMode === 'spotlight') {
       container.querySelectorAll('.participant-window').forEach((el) => {
         el.classList.remove('is-minimized', 'is-maximized');
+        const pid = el.id.replace('-container', '');
+        ensureWindowState(pid).minimized = false;
       });
       applySpotlightLayout();
     } else {
