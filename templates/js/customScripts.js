@@ -61,7 +61,7 @@ function goToRoom() {
   const match = code.match(uuidPattern);
   // If a match is found, return the matched UUID, otherwise return null
   if (match) {
-    window.location.href = "/room?id=" + match[0];
+    window.location.href = "room?id=" + match[0];
   } else {
     alert("invalid code")
   }

@@ -1,7 +1,10 @@
 import { defineConfig } from '@playwright/test';
 
 const PORT = Number(process.env.HITIME_PORT ?? 9012);
-export const BASE_URL = `http://localhost:${PORT}`;
+// Set HITIME_BASE_PATH=/hitime to run the whole suite against the app mounted
+// under a URL prefix (as it is behind the gportal reverse proxy).
+const BASE_PATH = (process.env.HITIME_BASE_PATH ?? '').replace(/^\/*|\/*$/g, '');
+export const BASE_URL = `http://localhost:${PORT}${BASE_PATH ? `/${BASE_PATH}/` : ''}`;
 
 export default defineConfig({
   testDir: './specs',
@@ -19,7 +22,7 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: `go run . --dev --port ${PORT}`,
+    command: `go run . --dev --port ${PORT} --base-path "${BASE_PATH}"`,
     cwd: '../..',
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,

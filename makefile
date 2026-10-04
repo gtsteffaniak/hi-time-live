@@ -21,6 +21,9 @@ test:
 test-e2e:
 	cd tests/e2e && npm install && npx playwright install --with-deps chromium && npx playwright test
 
+test-e2e-base-path:
+	cd tests/e2e && npm install && npx playwright install --with-deps chromium && HITIME_PORT=9013 HITIME_BASE_PATH=/hitime npx playwright test --grep-invert firefox
+
 lint:
 	golangci-lint run
 

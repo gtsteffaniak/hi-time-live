@@ -52,6 +52,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{}
 	id := uuid.New().String()
 	fmt.Println("version", Version)
+	data["basePath"] = BasePath
 	data["version"] = Version
 	data["code"] = id
 	data["joinModal"] = map[string]string{

@@ -25,7 +25,7 @@ test('an invalid room code renders the invalid-room page, not a broken room', as
   newPeer,
 }) => {
   const peer = await newPeer('alice', 'red');
-  const response = await peer.page.goto('/room?id=not-a-uuid');
+  const response = await peer.page.goto('room?id=not-a-uuid');
 
   expect(response?.status()).toBe(404);
   await expect(peer.page.locator('body')).toContainText(/not a valid room/i);
