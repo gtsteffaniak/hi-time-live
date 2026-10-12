@@ -9,6 +9,7 @@
 </head>
 
 <body>
+  <div id="connection-bar" class="hidden"></div>
   {{ template "components/modals/privacyModal.html" . }}
   {{ template "components/modals/loadingModal.html" . }}
   <video id="localVideo" class="hidden" autoplay muted playsinline></video>
@@ -36,6 +37,10 @@
       </a>
     </div>
   </div>
+
+  <!-- Server-rendered ICE servers (see routes/ice.go). Kept out of the script
+       body so signaling.js stays valid JavaScript. -->
+  <script type="application/json" id="ice-config">{{ .iceServers }}</script>
 
   <script>
     {{ template "js/signaling.js". }}

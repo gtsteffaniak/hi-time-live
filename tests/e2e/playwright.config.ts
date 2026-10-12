@@ -25,8 +25,18 @@ export default defineConfig({
     command: `go run . --dev --port ${PORT} --base-path "${BASE_PATH}"`,
     cwd: '../..',
     url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
+    // A server already running on the port was not started with the TURN
+    // settings below, so the relay-only spec would fail against it. Only reuse
+    // a server when we are not asking for a specific relay.
+    reuseExistingServer: !process.env.CI && !process.env.HITIME_TURN_URL,
     stdout: 'pipe',
     stderr: 'pipe',
+    // Passed through so the relay-only spec can prove the TURN wiring end to
+    // end; when unset the app serves STUN only and that spec is skipped.
+    env: {
+      TURN_URL: process.env.HITIME_TURN_URL ?? '',
+      TURN_USERNAME: process.env.HITIME_TURN_USERNAME ?? '',
+      TURN_CREDENTIAL: process.env.HITIME_TURN_CREDENTIAL ?? '',
+    },
   },
 });

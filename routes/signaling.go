@@ -23,6 +23,87 @@ const (
 	heartbeatInterval = 20 * time.Second
 )
 
+// removalGrace is how long a user's membership survives their last stream
+// closing. EventSource reconnects on its own within a few seconds, and a
+// departure announced immediately would make the remaining peers tear down a
+// still-healthy RTCPeerConnection. Cancelling the pending removal on reconnect
+// keeps the call alive across a transient outage. Guarded by connLock.
+var removalGrace = 3 * time.Second
+
+// pendingRemoval is a scheduled departure. The generation identifies the
+// schedule its timer belongs to: a reconnect cancels the timer and installs
+// nothing, and a later disconnect installs a new generation, so a callback that
+// fired while it was waiting for connLock can tell that it no longer owns the
+// user's departure. Guarded by connLock.
+type pendingRemoval struct {
+	timer *time.Timer
+	gen   uint64
+}
+
+// pendingRemovals holds the scheduled departure for a room+user so a reconnect
+// can cancel it. Guarded by connLock.
+var pendingRemovals = map[string]*pendingRemoval{}
+
+// removalGen is bumped for every scheduled removal. Guarded by connLock.
+var removalGen uint64
+
+func removalKey(roomId, userId string) string {
+	return roomId + "\x00" + userId
+}
+
+// cancelPendingRemoval stops a scheduled departure. Caller must hold connLock.
+func cancelPendingRemoval(roomId, userId string) {
+	key := removalKey(roomId, userId)
+	if pending, ok := pendingRemovals[key]; ok {
+		pending.timer.Stop()
+		delete(pendingRemovals, key)
+	}
+}
+
+// scheduleRemoval announces a departure once the grace window passes, unless the
+// user reconnects first.
+func scheduleRemoval(roomId, userId string) {
+	key := removalKey(roomId, userId)
+	connLock.Lock()
+	defer connLock.Unlock()
+	cancelPendingRemoval(roomId, userId)
+	removalGen++
+	gen := removalGen
+	pending := &pendingRemoval{gen: gen}
+	pendingRemovals[key] = pending
+	// The generation is captured by value, so the callback never reads state the
+	// caller is still writing. connLock is held until the entry above is
+	// installed, so no other goroutine sees a half-built schedule either.
+	pending.timer = time.AfterFunc(removalGrace, func() { expireRemoval(roomId, userId, gen) })
+}
+
+// expireRemoval is the grace timer's callback. It acts only when its generation
+// still owns the scheduled removal, so a callback that fired while it was
+// waiting for connLock cannot tear down a newer disconnect's grace period.
+func expireRemoval(roomId, userId string, gen uint64) {
+	key := removalKey(roomId, userId)
+	connLock.Lock()
+	pending, ok := pendingRemovals[key]
+	if !ok || pending.gen != gen {
+		connLock.Unlock()
+		return
+	}
+	delete(pendingRemovals, key)
+	if hasConnectionLocked(roomId, userId) {
+		connLock.Unlock()
+		return
+	}
+	// connLock stays held across the removal so a reconnect cannot register a
+	// live stream between the check above and the removal below. Otherwise the
+	// callback could evict a user whose new stream had already registered — and
+	// whose announceJoin saw the old membership, so it would not re-add them as
+	// a fresh join.
+	removeUserFromRoom(roomId, userId)
+	connLock.Unlock()
+	sendToOthers(roomId, userId, eventMessage{Code: roomId, UserId: userId, EventType: "removedUser"})
+	slog.Info("client disconnected", "user", userId, "room", roomId)
+}
+
 type connection struct {
 	connId    string
 	userId    string
@@ -34,17 +115,18 @@ var connections = make(map[string]*connection)
 var connLock sync.Mutex
 
 type eventMessage struct {
-	EventType  string `json:"eventType"`
-	UserId     string `json:"userId"`
-	Offer      string `json:"offer,omitempty"`
-	Candidates string `json:"candidates,omitempty"`
-	Candidate  string `json:"candidate,omitempty"`
-	MediaState string `json:"mediaState,omitempty"`
-	Code       string `json:"code,omitempty"`
-	Message    string `json:"message,omitempty"`
-	Answer     string `json:"answer,omitempty"`
-	ForUser    string `json:"forUser,omitempty"`
-	Time       string `json:"time,omitempty"`
+	EventType   string `json:"eventType"`
+	UserId      string `json:"userId"`
+	Offer       string `json:"offer,omitempty"`
+	Candidates  string `json:"candidates,omitempty"`
+	Candidate   string `json:"candidate,omitempty"`
+	MediaState  string `json:"mediaState,omitempty"`
+	Code        string `json:"code,omitempty"`
+	Message     string `json:"message,omitempty"`
+	Answer      string `json:"answer,omitempty"`
+	ForUser     string `json:"forUser,omitempty"`
+	Time        string `json:"time,omitempty"`
+	Renegotiate bool   `json:"renegotiate,omitempty"`
 }
 
 // clientEventTypes are the event types a browser is allowed to POST. Anything
@@ -90,6 +172,8 @@ func sseHandler(w http.ResponseWriter, r *http.Request) {
 
 	connLock.Lock()
 	connections[conn.connId] = conn
+	// This stream may be replacing one that just closed; keep the membership.
+	cancelPendingRemoval(roomId, userId)
 	connLock.Unlock()
 
 	defer func() {
@@ -108,9 +192,7 @@ func sseHandler(w http.ResponseWriter, r *http.Request) {
 		if stillPresent {
 			return
 		}
-		removeUserFromRoom(roomId, userId)
-		sendToOthers(roomId, userId, eventMessage{Code: roomId, UserId: userId, EventType: "removedUser"})
-		slog.Info("client disconnected", "user", userId, "room", roomId)
+		scheduleRemoval(roomId, userId)
 	}()
 
 	if err := writeEvent(w, flusher, eventMessage{EventType: "acknowledge"}); err != nil {
@@ -197,6 +279,10 @@ func postEventHandler(w http.ResponseWriter, r *http.Request) {
 func hasConnection(roomId, userId string) bool {
 	connLock.Lock()
 	defer connLock.Unlock()
+	return hasConnectionLocked(roomId, userId)
+}
+
+func hasConnectionLocked(roomId, userId string) bool {
 	for _, conn := range connections {
 		if conn.roomId == roomId && conn.userId == userId {
 			return true
