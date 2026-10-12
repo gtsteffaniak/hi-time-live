@@ -33,7 +33,7 @@ Disadvantages:
 
 ## How to use it
 
-A deployed version is available at https://hitime.live/.
+A deployed version is available at https://gportal.link/hitime.
 
 you can also deploy your own server using the docker image provided at dockerhub with `gtstef/hitime` or building locally.
 
