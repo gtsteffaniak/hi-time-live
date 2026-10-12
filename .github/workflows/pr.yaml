@@ -56,15 +56,18 @@ jobs:
       # loopback too; coturn rejects loopback peers by default ("error 403:
       # Forbidden IP"), which would leave the relay-only spec with no usable
       # candidate pair. --allow-loopback-peers is test-only and coturn refuses
-      # to honour it without a non-empty CLI password.
+      # to honour it without a non-empty CLI password. Binding to 127.0.0.1
+      # keeps that open relay off the runner's other interfaces.
       - name: start coturn relay
         run: |
           docker run -d --name coturn --network host coturn/coturn:4.6.2 \
             -n --lt-cred-mech --user hitime:hitime --realm hitime \
             --no-cli --no-tls --no-dtls --fingerprint \
             --allow-loopback-peers --cli-password=hitime \
+            --listening-ip 127.0.0.1 \
             --listening-port 3478 --min-port 49160 --max-port 49200 --log-file=stdout
           sleep 3
+          docker inspect -f '{{.State.Running}}' coturn | grep -q true
           docker logs coturn | tail -5
       - run: npx playwright test
         working-directory: tests/e2e
