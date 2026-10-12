@@ -6,6 +6,11 @@ on:
       - 'main'
       - 'v[0-9]+.[0-9]+.[0-9]+'
 
+# Every job here only needs to read the repository; nothing writes back to the
+# repo or its issues, so keep the default token read-only.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-24.04-arm
@@ -47,11 +52,17 @@ jobs:
       - run: go build ./...
       # Host networking lets the browser on the runner reach the relay at
       # 127.0.0.1:3478, which is what the relay-only spec needs to connect.
+      # Both peers run on the runner's loopback, so their relayed addresses are
+      # loopback too; coturn rejects loopback peers by default ("error 403:
+      # Forbidden IP"), which would leave the relay-only spec with no usable
+      # candidate pair. --allow-loopback-peers is test-only and coturn refuses
+      # to honour it without a non-empty CLI password.
       - name: start coturn relay
         run: |
           docker run -d --name coturn --network host coturn/coturn:4.6.2 \
             -n --lt-cred-mech --user hitime:hitime --realm hitime \
             --no-cli --no-tls --no-dtls --fingerprint \
+            --allow-loopback-peers --cli-password=hitime \
             --listening-port 3478 --min-port 49160 --max-port 49200 --log-file=stdout
           sleep 3
           docker logs coturn | tail -5

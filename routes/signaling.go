@@ -30,9 +30,22 @@ const (
 // keeps the call alive across a transient outage. Guarded by connLock.
 var removalGrace = 3 * time.Second
 
+// pendingRemoval is a scheduled departure. The generation identifies the
+// schedule its timer belongs to: a reconnect cancels the timer and installs
+// nothing, and a later disconnect installs a new generation, so a callback that
+// fired while it was waiting for connLock can tell that it no longer owns the
+// user's departure. Guarded by connLock.
+type pendingRemoval struct {
+	timer *time.Timer
+	gen   uint64
+}
+
 // pendingRemovals holds the scheduled departure for a room+user so a reconnect
 // can cancel it. Guarded by connLock.
-var pendingRemovals = map[string]*time.Timer{}
+var pendingRemovals = map[string]*pendingRemoval{}
+
+// removalGen is bumped for every scheduled removal. Guarded by connLock.
+var removalGen uint64
 
 func removalKey(roomId, userId string) string {
 	return roomId + "\x00" + userId
@@ -41,8 +54,8 @@ func removalKey(roomId, userId string) string {
 // cancelPendingRemoval stops a scheduled departure. Caller must hold connLock.
 func cancelPendingRemoval(roomId, userId string) {
 	key := removalKey(roomId, userId)
-	if timer, ok := pendingRemovals[key]; ok {
-		timer.Stop()
+	if pending, ok := pendingRemovals[key]; ok {
+		pending.timer.Stop()
 		delete(pendingRemovals, key)
 	}
 }
@@ -54,19 +67,41 @@ func scheduleRemoval(roomId, userId string) {
 	connLock.Lock()
 	defer connLock.Unlock()
 	cancelPendingRemoval(roomId, userId)
-	pendingRemovals[key] = time.AfterFunc(removalGrace, func() {
-		connLock.Lock()
-		if hasConnectionLocked(roomId, userId) {
-			delete(pendingRemovals, key)
-			connLock.Unlock()
-			return
-		}
-		delete(pendingRemovals, key)
+	removalGen++
+	gen := removalGen
+	pending := &pendingRemoval{gen: gen}
+	pendingRemovals[key] = pending
+	// The generation is captured by value, so the callback never reads state the
+	// caller is still writing. connLock is held until the entry above is
+	// installed, so no other goroutine sees a half-built schedule either.
+	pending.timer = time.AfterFunc(removalGrace, func() { expireRemoval(roomId, userId, gen) })
+}
+
+// expireRemoval is the grace timer's callback. It acts only when its generation
+// still owns the scheduled removal, so a callback that fired while it was
+// waiting for connLock cannot tear down a newer disconnect's grace period.
+func expireRemoval(roomId, userId string, gen uint64) {
+	key := removalKey(roomId, userId)
+	connLock.Lock()
+	pending, ok := pendingRemovals[key]
+	if !ok || pending.gen != gen {
 		connLock.Unlock()
-		removeUserFromRoom(roomId, userId)
-		sendToOthers(roomId, userId, eventMessage{Code: roomId, UserId: userId, EventType: "removedUser"})
-		slog.Info("client disconnected", "user", userId, "room", roomId)
-	})
+		return
+	}
+	delete(pendingRemovals, key)
+	if hasConnectionLocked(roomId, userId) {
+		connLock.Unlock()
+		return
+	}
+	// connLock stays held across the removal so a reconnect cannot register a
+	// live stream between the check above and the removal below. Otherwise the
+	// callback could evict a user whose new stream had already registered — and
+	// whose announceJoin saw the old membership, so it would not re-add them as
+	// a fresh join.
+	removeUserFromRoom(roomId, userId)
+	connLock.Unlock()
+	sendToOthers(roomId, userId, eventMessage{Code: roomId, UserId: userId, EventType: "removedUser"})
+	slog.Info("client disconnected", "user", userId, "room", roomId)
 }
 
 type connection struct {

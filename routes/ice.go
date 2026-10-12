@@ -15,6 +15,30 @@ type ICEServer struct {
 	Credential string          `json:"credential,omitempty"`
 }
 
+// iceServerURLs normalizes an RTCIceServer's `urls` value — either a single URL
+// string or an array of them — into the list the browser will use. Anything
+// that is neither, or that yields no non-empty URL, is unusable.
+func iceServerURLs(raw json.RawMessage) []string {
+	var single string
+	if err := json.Unmarshal(raw, &single); err == nil {
+		if strings.TrimSpace(single) == "" {
+			return nil
+		}
+		return []string{single}
+	}
+	var many []string
+	if err := json.Unmarshal(raw, &many); err != nil {
+		return nil
+	}
+	var urls []string
+	for _, u := range many {
+		if strings.TrimSpace(u) != "" {
+			urls = append(urls, u)
+		}
+	}
+	return urls
+}
+
 // defaultSTUNServers is used when nothing is configured. Only hosts that still
 // answer are kept: the list this replaced included the long-dead
 // stun.stunprotocol.org and several stale consumer-VoIP hosts, which added
@@ -42,6 +66,14 @@ func ConfigureICE(iceServersRaw, turnURL, turnUsername, turnCredential string) e
 		var parsed []ICEServer
 		if err := json.Unmarshal([]byte(iceServersRaw), &parsed); err != nil {
 			return fmt.Errorf("ICE_SERVERS must be a JSON array of RTCIceServer objects: %w", err)
+		}
+		// The browser rejects a server with no usable URL (or an empty URL
+		// list), so a malformed override would only surface later as a room
+		// that cannot connect. Reject it here, where the operator can see why.
+		for i, server := range parsed {
+			if len(iceServerURLs(server.URLs)) == 0 {
+				return fmt.Errorf("ICE_SERVERS[%d] must have a non-empty urls string or array", i)
+			}
 		}
 		raw, err := json.Marshal(parsed)
 		if err != nil {

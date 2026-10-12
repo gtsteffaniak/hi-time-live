@@ -29,9 +29,13 @@ WORKDIR /app/tests/e2e
 ENV CI=true
 # Start a local relay first so the relay-only spec can prove a relay candidate is
 # really used. The background process lives for the duration of this layer.
+# Both the browser and the relay live in this container, so relayed peer
+# addresses are loopback and coturn's default loopback block would forbid them;
+# --allow-loopback-peers is test-only and needs a non-empty CLI password.
 RUN tsc --noEmit -p tsconfig.json \
     && (turnserver -n --lt-cred-mech --user hitime:hitime --realm hitime \
         --no-cli --no-tls --no-dtls --fingerprint \
+        --allow-loopback-peers --cli-password=hitime \
         --listening-port 3478 --min-port 49160 --max-port 49200 --log-file=stdout &) \
     && sleep 3 \
     && HITIME_TURN_URL=turn:127.0.0.1:3478 HITIME_TURN_USERNAME=hitime HITIME_TURN_CREDENTIAL=hitime \

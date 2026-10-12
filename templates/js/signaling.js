@@ -11,11 +11,23 @@ const videoConstraints = {
 // encode H264, and removing it would leave those peers sending no video at all.
 const allowedCodecs = ['VP9', 'H264', 'VP8'];
 
-// Rendered server-side from --ice-servers / --turn-url (see routes/ice.go) so a
-// deployment can add a TURN relay without rebuilding the frontend. STUN alone
-// cannot traverse symmetric NAT or a restrictive firewall, which is why peers
-// that "never connect" need a relay candidate.
-const renderedIceServers = {{ .iceServers }};
+// Rendered server-side from --ice-servers / --turn-url (see routes/ice.go) into
+// the #ice-config element, so a deployment can add a TURN relay without
+// rebuilding the frontend. STUN alone cannot traverse symmetric NAT or a
+// restrictive firewall, which is why peers that "never connect" need a relay.
+function readRenderedIceServers() {
+    const element = document.getElementById('ice-config');
+    if (!element) return [];
+    try {
+        const parsed = JSON.parse(element.textContent);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+        console.error("unparseable ICE configuration:", err);
+        return [];
+    }
+}
+
+const renderedIceServers = readRenderedIceServers();
 const defaultIceServers = [
     { 'urls': 'stun:stun.l.google.com:19302' },
     { 'urls': 'stun:stun1.l.google.com:19302' },
@@ -80,51 +92,66 @@ const outboundQueueLimit = 128;
 let localVideo = document.getElementById('localVideo');
 
 
-// The status bar shows one pulsing row per peer that has not connected yet, so a
-// joining user is visible immediately instead of the room looking empty until
-// media arrives.
-function peerLabel(peer) {
-    const name = peer.id.split("__")[0];
+// The status bar is the room's live roster: one row per participant, pulsing
+// while they are still connecting and steady once they settle. Every peer stays
+// listed, so a join, a reconnect, a failure or a departure is visible as it
+// happens instead of only in a spinner that disappears the moment media arrives.
+//
+// Collapse the internal handshake states into the four things a user cares
+// about: `new`, `offering` and `answering` are all just "connecting".
+function peerVisualState(peer) {
     switch (peer.state) {
-        case "failed": return name + " — connection failed";
-        case "reconnecting": return name + " — reconnecting";
-        case "new":
-        case "offering":
-        case "answering": return name + " — connecting";
-        default: return name;
+        case "failed": return "failed";
+        case "reconnecting": return "reconnecting";
+        case "connected": return "connected";
+        default: return "connecting";
     }
+}
+
+function peerStateText(state) {
+    return state === "failed" ? "connection failed" : state;
+}
+
+function connectionRow(peer) {
+    const row = document.createElement('div');
+    row.id = peer.id + '-status-row';
+    row.classList.add('conn-row');
+
+    const state = peerVisualState(peer);
+
+    const icon = document.createElement('span');
+    icon.classList.add('conn-icon', 'conn-' + state);
+
+    const name = document.createElement('span');
+    name.classList.add('conn-name');
+    name.textContent = peer.id.split("__")[0];
+
+    const label = document.createElement('span');
+    label.classList.add('conn-state');
+    label.textContent = peerStateText(state);
+
+    row.appendChild(icon);
+    row.appendChild(name);
+    row.appendChild(label);
+
+    if (peer.state === "failed") {
+        const retry = document.createElement('button');
+        retry.classList.add('conn-retry');
+        retry.textContent = 'Retry';
+        retry.onclick = () => retryPeer(peer.id);
+        row.appendChild(retry);
+    }
+    return row;
 }
 
 function renderConnectionBar() {
     const bar = document.getElementById('connection-bar');
     if (!bar) return;
-    const rows = Object.values(peers).filter((peer) => peer.state !== "connected");
     bar.innerHTML = '';
-    if (rows.length === 0) {
-        bar.classList.add("hidden");
-        return;
+    for (const peer of Object.values(peers)) {
+        bar.appendChild(connectionRow(peer));
     }
-    bar.classList.remove("hidden");
-    for (const peer of rows) {
-        const row = document.createElement('div');
-        row.id = peer.id + '-status-row';
-        row.classList.add('conn-row');
-        const icon = document.createElement('span');
-        icon.classList.add('conn-icon', 'conn-' + peer.state);
-        const name = document.createElement('span');
-        name.classList.add('conn-name');
-        name.textContent = peerLabel(peer);
-        row.appendChild(icon);
-        row.appendChild(name);
-        if (peer.state === "failed") {
-            const retry = document.createElement('button');
-            retry.classList.add('conn-retry');
-            retry.textContent = 'Retry';
-            retry.onclick = () => retryPeer(peer.id);
-            row.appendChild(retry);
-        }
-        bar.appendChild(row);
-    }
+    bar.classList.toggle("hidden", bar.children.length === 0);
 }
 
 function createRemoteVideoStream(id) {
@@ -599,6 +626,13 @@ async function answerPeer(peer, msg) {
     if (peer.state === "closed") {
         return
     }
+    // A renegotiation can complete while the connection is already up (the
+    // remote restarted ICE, but our own connectionState never changed), so no
+    // state event will arrive to clear "answering". Settle it now instead of
+    // letting the connect watchdog declare a healthy peer failed.
+    if (peer.pc.connectionState === "connected") {
+        handleConnectionState(peer);
+    }
     console.log("sending answer to ", peer.id)
     sendEvent({
         eventType: "answer",
@@ -789,6 +823,12 @@ async function handleAnswer(msg) {
         await addCandidate(peer, candidate)
     }
     await flushPendingCandidates(peer)
+    // Same gap as answerPeer: an ICE-restart answer can land on a connection
+    // that is already "connected", so no state event follows to leave
+    // "offering" behind.
+    if (peer.pc.connectionState === "connected") {
+        handleConnectionState(peer);
+    }
     hideLoadingModal()
     console.log("done handling answer")
 }

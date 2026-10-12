@@ -27,17 +27,21 @@ func roomPage(t *testing.T, server *httptest.Server, url string) string {
 	return string(body)
 }
 
-// renderedIceServers returns just the line the client reads its ICE config from,
-// so assertions are not confused by the script's own fallback STUN list.
+// renderedIceServers returns the JSON the client reads its ICE config from, so
+// assertions are not confused by the script's own fallback STUN list.
 func renderedIceServers(t *testing.T, body string) string {
 	t.Helper()
-	for _, line := range strings.Split(body, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "const renderedIceServers =") {
-			return line
-		}
+	const marker = `<script type="application/json" id="ice-config">`
+	start := strings.Index(body, marker)
+	if start < 0 {
+		t.Fatalf("room page did not render an ICE server list")
 	}
-	t.Fatalf("room page did not render an ICE server list")
-	return ""
+	start += len(marker)
+	end := strings.Index(body[start:], "</script>")
+	if end < 0 {
+		t.Fatalf("ICE server list element is not closed")
+	}
+	return body[start : start+end]
 }
 
 // A configured TURN server must reach the browser, otherwise peers behind
@@ -81,9 +85,36 @@ func TestICEServersOverrideReplacesDefaults(t *testing.T) {
 	}
 }
 
+// An override that parses but carries no usable URL must be rejected at startup
+// rather than shipped to the browser, where the WebRTC algorithm would refuse
+// the whole configuration and every room would fail to connect.
 func TestInvalidICEServersIsRejected(t *testing.T) {
-	if err := ConfigureICE("{not json", "", "", ""); err == nil {
-		t.Fatal("ConfigureICE accepted malformed ICE_SERVERS")
+	cases := map[string]string{
+		"malformed JSON":     "{not json",
+		"missing urls":       `[{}]`,
+		"empty url list":     `[{"urls":[]}]`,
+		"blank url string":   `[{"urls":""}]`,
+		"blank url in array": `[{"urls":["  "]}]`,
+		"non-string url":     `[{"urls":[42]}]`,
+		"later entry empty":  `[{"urls":"stun:ok.example.com:3478"},{}]`,
+	}
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			if err := ConfigureICE(raw, "", "", ""); err == nil {
+				t.Fatalf("ConfigureICE accepted invalid ICE_SERVERS: %s", raw)
+			}
+		})
+	}
+}
+
+// urls may be a bare string as well as an array; both are valid RTCIceServer.
+func TestICEServersAcceptsSingleURLString(t *testing.T) {
+	t.Cleanup(func() { iceServersJSON = "" })
+	if err := ConfigureICE(`[{"urls":"stun:only.example.com:3478"}]`, "", "", ""); err != nil {
+		t.Fatalf("ConfigureICE rejected a single-string urls value: %v", err)
+	}
+	if !strings.Contains(string(iceServersJSON), "stun:only.example.com:3478") {
+		t.Errorf("single-string urls value was not rendered: %s", iceServersJSON)
 	}
 }
 
