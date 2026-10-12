@@ -48,7 +48,7 @@ func renderedIceServers(t *testing.T, body string) string {
 // symmetric NAT have no relay candidate and can never connect.
 func TestRoomPageRendersConfiguredTurnServer(t *testing.T) {
 	server := newTestServer(t)
-	if err := ConfigureICE("", "turn:turn.example.com:3478", "alice", "s3cret"); err != nil {
+	if err := ConfigureICE(true, "", "turn:turn.example.com:3478", "alice", "s3cret"); err != nil {
 		t.Fatalf("ConfigureICE: %v", err)
 	}
 	line := renderedIceServers(t, roomPage(t, server, server.URL+"/room?id="+newCode(t)))
@@ -69,7 +69,7 @@ func TestRoomPageRendersConfiguredTurnServer(t *testing.T) {
 func TestICEServersOverrideReplacesDefaults(t *testing.T) {
 	server := newTestServer(t)
 	override := `[{"urls":["stun:custom.example.com:3478","turns:turn.example.com:5349"],"username":"u","credential":"p"}]`
-	if err := ConfigureICE(override, "turn:ignored.example.com:3478", "ignored", "ignored"); err != nil {
+	if err := ConfigureICE(true, override, "turn:ignored.example.com:3478", "ignored", "ignored"); err != nil {
 		t.Fatalf("ConfigureICE: %v", err)
 	}
 	line := renderedIceServers(t, roomPage(t, server, server.URL+"/room?id="+newCode(t)))
@@ -100,7 +100,7 @@ func TestInvalidICEServersIsRejected(t *testing.T) {
 	}
 	for name, raw := range cases {
 		t.Run(name, func(t *testing.T) {
-			if err := ConfigureICE(raw, "", "", ""); err == nil {
+			if err := ConfigureICE(true, raw, "", "", ""); err == nil {
 				t.Fatalf("ConfigureICE accepted invalid ICE_SERVERS: %s", raw)
 			}
 		})
@@ -110,11 +110,60 @@ func TestInvalidICEServersIsRejected(t *testing.T) {
 // urls may be a bare string as well as an array; both are valid RTCIceServer.
 func TestICEServersAcceptsSingleURLString(t *testing.T) {
 	t.Cleanup(func() { iceServersJSON = "" })
-	if err := ConfigureICE(`[{"urls":"stun:only.example.com:3478"}]`, "", "", ""); err != nil {
+	if err := ConfigureICE(true, `[{"urls":"stun:only.example.com:3478"}]`, "", "", ""); err != nil {
 		t.Fatalf("ConfigureICE rejected a single-string urls value: %v", err)
 	}
 	if !strings.Contains(string(iceServersJSON), "stun:only.example.com:3478") {
 		t.Errorf("single-string urls value was not rendered: %s", iceServersJSON)
+	}
+}
+
+// The overrides are a development-only feature: a production run must never
+// publish a relay credential on a room page, because anyone who can load any
+// room URL can read it and reuse the relay outside this app.
+func TestICEOverridesAreIgnoredOutsideDevMode(t *testing.T) {
+	server := newTestServer(t)
+	err := ConfigureICE(false,
+		`[{"urls":"turn:relay.example.com:3478","username":"alice","credential":"s3cret"}]`,
+		"turn:relay.example.com:3478", "alice", "s3cret")
+	if err != nil {
+		t.Fatalf("ConfigureICE outside dev mode returned an error: %v", err)
+	}
+
+	line := renderedIceServers(t, roomPage(t, server, server.URL+"/room?id="+newCode(t)))
+	for _, leaked := range []string{"s3cret", "relay.example.com"} {
+		if strings.Contains(line, leaked) {
+			t.Errorf("a production run published the configured relay (%q): %s", leaked, line)
+		}
+	}
+	if !strings.Contains(line, "stun:stun.l.google.com:19302") {
+		t.Errorf("a production run must serve the built-in STUN servers: %s", line)
+	}
+
+	// A malformed dev-only override must not stop a production run either.
+	if err := ConfigureICE(false, "{not json", "", "", ""); err != nil {
+		t.Errorf("a malformed dev-only override blocked a production run: %v", err)
+	}
+}
+
+// The warning should name exactly the settings that were ignored.
+func TestConfiguredICEOverridesNamesOnlySetSettings(t *testing.T) {
+	cases := []struct {
+		name                                string
+		iceServers, turnURL, user, password string
+		want                                string
+	}{
+		{"nothing set", "", "", "", "", ""},
+		{"whitespace is not set", "  ", "\t", " ", "", ""},
+		{"credential only", "", "", "", "s3cret", "TURN_CREDENTIAL"},
+		{"all set", "[]", "turn:a:1", "u", "p", "ICE_SERVERS, TURN_URL, TURN_USERNAME, TURN_CREDENTIAL"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := configuredICEOverrides(tc.iceServers, tc.turnURL, tc.user, tc.password); got != tc.want {
+				t.Errorf("configuredICEOverrides() = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

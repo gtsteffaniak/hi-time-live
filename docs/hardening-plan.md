@@ -74,12 +74,17 @@ rejoin, aborted signaling requests, unauthorized sender, mute, video disable.
 Motivated by a production report where signaling completed and then the peers
 never connected, and the UI silently fell back to "Waiting on others to join".
 
-- **TURN is configurable.** `ICE_SERVERS` (full JSON override) or
-  `TURN_URL`/`TURN_USERNAME`/`TURN_CREDENTIAL` are rendered into the room page by
-  `routes/ice.go`, so a relay can be added by configuration. This is the actual
-  fix for peers behind symmetric NAT / CGNAT, where STUN alone can never
-  produce a working candidate pair. The dead `stun.stunprotocol.org` and stale
-  consumer-VoIP hosts were dropped from the defaults.
+- **TURN is configurable in development only.** `ICE_SERVERS` (full JSON
+  override) or `TURN_URL`/`TURN_USERNAME`/`TURN_CREDENTIAL` are rendered into the
+  room page by `routes/ice.go`, so a relay can be added by configuration — but
+  only when the server runs with `--dev`. The page is served for any valid UUID
+  with no authentication, so a static TURN credential would otherwise be
+  harvestable and reusable against the relay; a production run ignores the
+  overrides (with a warning) and serves the built-in STUN servers. In
+  development this is the fix for peers behind symmetric NAT / CGNAT, where STUN
+  alone can never produce a working candidate pair. The dead
+  `stun.stunprotocol.org` and stale consumer-VoIP hosts were dropped from the
+  defaults.
 - **ICE restart instead of instant teardown.** `failed` and a persistent
   `disconnected` now trigger an ICE-restart offer (`renegotiate: true`) with a
   bounded number of attempts before the peer is declared failed. A colliding

@@ -75,9 +75,11 @@ description (and until the peer exists at all). The legacy `candidates` array
 field on `offer`/`answer` is still parsed for compatibility but no longer sent.
 
 The ICE server list is not hardcoded: the server renders it into the room page
-from `ICE_SERVERS` or the `TURN_URL`/`TURN_USERNAME`/`TURN_CREDENTIAL` flags (see
-the README). STUN alone cannot traverse symmetric NAT or a restrictive firewall,
-so a deployment that must reach those users needs a TURN relay. A peer that
+from `ICE_SERVERS` or the `TURN_URL`/`TURN_USERNAME`/`TURN_CREDENTIAL` flags, but
+only when it runs with `--dev` (see the README). STUN alone cannot traverse
+symmetric NAT or a restrictive firewall, so reaching those users needs a TURN
+relay; a production run serves the built-in STUN servers rather than publish a
+page-visible relay credential. A peer that
 fails or stalls is restarted with an ICE-restart offer (`renegotiate: true`)
 before its tile is torn down; simultaneous restarts are resolved by a
 deterministic polite/impolite rule rather than corrupting a connection.

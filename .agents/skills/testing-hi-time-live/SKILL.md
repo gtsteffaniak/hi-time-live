@@ -8,6 +8,7 @@ description: How to run UI-driven end-to-end tests of the hi-time-live WebRTC ap
 ## Running the app
 - `PATH=/usr/local/go/bin:$PATH go run . --dev --port <PORT>`; without `cert.pem`/`key.pem` it falls back to HTTP. `http://localhost:<PORT>` is a secure context so `getUserMedia` works.
 - `--dev` hot-reloads templates: if the file tree is being edited mid-run, open pages keep stale JS. Reload all peers after code changes.
+- ICE/TURN overrides (`--ice-servers`, `TURN_URL`/`TURN_USERNAME`/`TURN_CREDENTIAL`) are honoured only with `--dev`: a production run ignores them (with a warning) and serves the built-in STUN servers, so the relay-only spec needs the app started with `--dev` (as `playwright.config.ts` does).
 - Pick a port nobody else uses; the Playwright suite in `tests/e2e` may already be running its own server.
 - The checked-out tree usually has `cert.pem`/`key.pem` (gitignored, from `make setup`), so `go run` serves **HTTPS** — but `playwright.config.ts` points at `http://localhost:<PORT>`. Move both files aside (e.g. to `/tmp`) before `npx playwright test`, then restore them. The Go tests are unaffected.
 

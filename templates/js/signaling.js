@@ -11,9 +11,11 @@ const videoConstraints = {
 // encode H264, and removing it would leave those peers sending no video at all.
 const allowedCodecs = ['VP9', 'H264', 'VP8'];
 
-// Rendered server-side from --ice-servers / --turn-url (see routes/ice.go) into
-// the #ice-config element, so a deployment can add a TURN relay without
-// rebuilding the frontend. STUN alone cannot traverse symmetric NAT or a
+// Rendered server-side into the #ice-config element from --ice-servers /
+// --turn-url (see routes/ice.go), so a development run can add a TURN relay
+// without rebuilding the frontend. Those overrides are dev-only: a production
+// run serves the built-in STUN servers, so a relay credential is never
+// published to the page. STUN alone cannot traverse symmetric NAT or a
 // restrictive firewall, which is why peers that "never connect" need a relay.
 function readRenderedIceServers() {
     const element = document.getElementById('ice-config');

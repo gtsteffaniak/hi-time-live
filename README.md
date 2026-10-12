@@ -56,11 +56,12 @@ location /hitime/ {
 
 Note: The frontend features require an HTTPS connection, so any build should be done behind one. I have included the `generate_cert.go` standard library for quick mock certificate creation for local testing.
 
-### TURN / ICE configuration
+### TURN / ICE configuration (development only)
 
 STUN alone cannot traverse symmetric NAT or a restrictive firewall. Peers behind
 those complete signaling and then never connect, which is the failure a relay
-fixes. Point the server at a TURN relay so those users get a relayed path:
+fixes. For development and testing you can point the server at a TURN relay so
+those users get a relayed path:
 
 | Flag | Env | Meaning |
 | --- | --- | --- |
@@ -69,10 +70,14 @@ fixes. Point the server at a TURN relay so those users get a relayed path:
 | `--turn-credential` | `TURN_CREDENTIAL` | TURN credential |
 | `--ice-servers` | `ICE_SERVERS` | Full `RTCIceServer[]` JSON override; wins over the flags above |
 
-The list is rendered into the room page and the browser builds its connections
-from it. The credentials are therefore visible to anyone who can load the page
-(inherent to WebRTC); prefer short-lived TURN credentials where the relay
-supports them.
+These overrides are honoured **only when the server runs with `--dev`**. The list
+is rendered into every room page, and `routes/room.go` serves that page for any
+syntactically valid UUID with no authentication, so a static TURN credential
+published there can be harvested by anyone and reused against the relay outside
+this app. A production run (the container's default `./hi-time-live`) therefore
+always serves the built-in STUN servers, ignoring these flags and logging a
+warning when any are set. Short-lived, scoped credentials are the way to expose a
+relay safely; see [docs/hardening-plan.md](docs/hardening-plan.md).
 
 For diagnosing a peer that never connects, the room page accepts:
 

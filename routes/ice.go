@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"strings"
 )
 
@@ -57,11 +58,46 @@ var defaultSTUNServers = []ICEServer{
 // iceServersJSON is the marshalled ICE server list rendered into the room page.
 var iceServersJSON template.JS
 
+// configuredICEOverrides names the ICE/TURN settings present in a run, in flag
+// order, so the warning can tell the operator exactly what was ignored.
+func configuredICEOverrides(iceServersRaw, turnURL, turnUsername, turnCredential string) string {
+	var set []string
+	for _, setting := range []struct {
+		name  string
+		value string
+	}{
+		{"ICE_SERVERS", iceServersRaw},
+		{"TURN_URL", turnURL},
+		{"TURN_USERNAME", turnUsername},
+		{"TURN_CREDENTIAL", turnCredential},
+	} {
+		if strings.TrimSpace(setting.value) != "" {
+			set = append(set, setting.name)
+		}
+	}
+	return strings.Join(set, ", ")
+}
+
 // ConfigureICE builds the ICE server list handed to browsers. ICE_SERVERS, when
 // set, is a full override; it is re-marshalled so only the documented fields
 // reach the page. Otherwise the STUN defaults are used and, when TURN_URL is
 // set, a TURN entry is appended.
-func ConfigureICE(iceServersRaw, turnURL, turnUsername, turnCredential string) error {
+//
+// The overrides are a development-only feature. The list is rendered into every
+// room page, and a static TURN credential published there can be harvested by
+// anyone who can load any room URL (routes/room.go requires only a
+// syntactically valid UUID) and reused against the relay outside this app.
+// Outside dev mode they are ignored and the built-in STUN servers are served,
+// so a production run cannot publish a credential.
+func ConfigureICE(devMode bool, iceServersRaw, turnURL, turnUsername, turnCredential string) error {
+	if !devMode {
+		iceServersJSON = ""
+		if set := configuredICEOverrides(iceServersRaw, turnURL, turnUsername, turnCredential); set != "" {
+			slog.Warn("ignoring ICE/TURN configuration outside dev mode; serving the built-in STUN servers",
+				"settings", set)
+		}
+		return nil
+	}
 	if strings.TrimSpace(iceServersRaw) != "" {
 		var parsed []ICEServer
 		if err := json.Unmarshal([]byte(iceServersRaw), &parsed); err != nil {
