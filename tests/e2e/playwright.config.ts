@@ -28,5 +28,12 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     stdout: 'pipe',
     stderr: 'pipe',
+    // Passed through so the relay-only spec can prove the TURN wiring end to
+    // end; when unset the app serves STUN only and that spec is skipped.
+    env: {
+      TURN_URL: process.env.HITIME_TURN_URL ?? '',
+      TURN_USERNAME: process.env.HITIME_TURN_USERNAME ?? '',
+      TURN_CREDENTIAL: process.env.HITIME_TURN_CREDENTIAL ?? '',
+    },
   },
 });

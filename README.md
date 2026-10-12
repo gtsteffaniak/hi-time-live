@@ -56,15 +56,49 @@ location /hitime/ {
 
 Note: The frontend features require an HTTPS connection, so any build should be done behind one. I have included the `generate_cert.go` standard library for quick mock certificate creation for local testing.
 
+### TURN / ICE configuration
+
+STUN alone cannot traverse symmetric NAT or a restrictive firewall. Peers behind
+those complete signaling and then never connect, which is the failure a relay
+fixes. Point the server at a TURN relay so those users get a relayed path:
+
+| Flag | Env | Meaning |
+| --- | --- | --- |
+| `--turn-url` | `TURN_URL` | TURN URL(s), comma separated, e.g. `turn:turn.example.com:3478` |
+| `--turn-username` | `TURN_USERNAME` | TURN username |
+| `--turn-credential` | `TURN_CREDENTIAL` | TURN credential |
+| `--ice-servers` | `ICE_SERVERS` | Full `RTCIceServer[]` JSON override; wins over the flags above |
+
+The list is rendered into the room page and the browser builds its connections
+from it. The credentials are therefore visible to anyone who can load the page
+(inherent to WebRTC); prefer short-lived TURN credentials where the relay
+supports them.
+
+For diagnosing a peer that never connects, the room page accepts:
+
+- `?relay=1` — force relay-only ICE, ignoring host and STUN candidates. This
+  reproduces "this user's NAT admits no direct path".
+- `?noturn=1` — drop TURN servers from the list.
+- `?connecttimeout=<ms>` — shorten the connect watchdog (default 20000).
+
+`make test-e2e-turn` starts a local coturn and runs the relay-only spec through
+it, which is the end-to-end proof that the configured relay is actually used.
+
 ## Testing
 
 - `make test` runs the Go unit/integration tests (room lifecycle, signaling
-  routing, isolation, disconnects) under the race detector.
+  routing, isolation, disconnects, ICE configuration) under the race detector.
 - `make test-e2e` runs the Playwright suite in `tests/e2e`, which drives one
   Chromium process per peer with deterministic fake camera/microphone input and
   asserts real media over `getStats` and pixel/tone identity.
 - `make test-e2e-base-path` runs the same suite against the app mounted under
   `/hitime` (`HITIME_BASE_PATH`), which is how it is deployed behind gportal.
+- `make test-e2e-turn` additionally starts a coturn container and runs the
+  relay-only spec, proving a relay candidate is really used. It needs host
+  networking (CI, or Docker Desktop with host networking enabled).
+- The suite covers the "never connects" failure directly: `08-ice-failure.spec.ts`
+  uses `?relay=1&noturn=1` to make "no usable network path" deterministic and
+  asserts the failure is surfaced rather than silently hanging.
 
 The signaling contract is documented in [docs/signaling-protocol.md](docs/signaling-protocol.md),
 and the remaining hardening work in [docs/hardening-plan.md](docs/hardening-plan.md).

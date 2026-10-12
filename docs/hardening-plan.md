@@ -69,10 +69,49 @@ rejoin, aborted signaling requests, unauthorized sender, mute, video disable.
   VP8 is back on the allowed list); and a Go churn test asserting the room and
   connection maps return to empty after repeated join/leave cycles.
 
+## Connectivity hardening (this change)
+
+Motivated by a production report where signaling completed and then the peers
+never connected, and the UI silently fell back to "Waiting on others to join".
+
+- **TURN is configurable.** `ICE_SERVERS` (full JSON override) or
+  `TURN_URL`/`TURN_USERNAME`/`TURN_CREDENTIAL` are rendered into the room page by
+  `routes/ice.go`, so a relay can be added by configuration. This is the actual
+  fix for peers behind symmetric NAT / CGNAT, where STUN alone can never
+  produce a working candidate pair. The dead `stun.stunprotocol.org` and stale
+  consumer-VoIP hosts were dropped from the defaults.
+- **ICE restart instead of instant teardown.** `failed` and a persistent
+  `disconnected` now trigger an ICE-restart offer (`renegotiate: true`) with a
+  bounded number of attempts before the peer is declared failed. A colliding
+  restart is resolved by a deterministic polite/impolite rule (a `rollback`
+  rather than a corrupted remote description).
+- **Reconnect no longer breaks the mesh.** The server delays `removedUser` by
+  `removalGrace` and cancels it if the user reconnects, and a client that
+  receives a fresh offer for a peer whose connection is stale resets and answers
+  it instead of dropping it (the old behaviour deadlocked the pair until both
+  reloaded).
+- **Signaling survives a stream outage.** Outbound events are queued while the
+  SSE stream is down and flushed on reopen, instead of being lost.
+- **Failures are visible.** A fixed status bar shows one pulsing row per peer
+  that has not connected, a red row with a Retry when it fails, and the loading
+  modal is now only the initial-join spinner — a failed peer no longer collapses
+  into the empty-room prompt. A connect watchdog bounds "stuck forever", and the
+  selected ICE candidate pair is logged for diagnosis.
+- **Tests.** Go: the removal grace (reconnect keeps the call, departure is still
+  announced), `renegotiate` forwarding, and ICE-config rendering/override.
+  Playwright: `08-ice-failure.spec.ts` makes "no usable network path"
+  deterministic with `?relay=1&noturn=1` and asserts the failure is surfaced; a
+  coturn-backed spec proves a relay-only peer actually connects (`make
+  test-e2e-turn`, run in CI with `docker run --network host coturn/coturn`).
+
 ## Next steps (not in this change)
 
 1. **Test matrix.** Simulated packet loss/renegotiation under throttle (e.g.
    Playwright's connection emulation or a proxy), and longer soak runs.
-2. **Renegotiation.** Track add/remove mid-call (e.g. `switchMedia`) still has
-   no signaling path; needs an offer/answer round guarded by the peer state
-   machine.
+2. **Track changes mid-call.** ICE restart now has a signaling path, but adding
+   or removing tracks (e.g. `switchMedia`, which is commented out in the room
+   template) still has none; it needs an offer/answer round guarded by the same
+   polite/impolite rule.
+3. **Ephemeral TURN credentials.** Static credentials are page-visible; a
+   `/ice` endpoint minting short-lived HMAC credentials would remove the
+   harvest-and-reuse risk.

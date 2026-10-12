@@ -20,6 +20,16 @@ export interface PeerOptions {
  */
 declare const peers: Record<string, { pc: RTCPeerConnection; state: string } | undefined>;
 
+/**
+ * `signaling.js` also declares `configuration` with a top-level `const`, so it
+ * is reachable from page functions as a global lexical binding. `urls` is a
+ * string or an array depending on how the server rendered it.
+ */
+declare const configuration: {
+  iceServers: { urls: string | string[] }[];
+  iceTransportPolicy?: RTCIceTransportPolicy;
+};
+
 export interface InboundVideoStats {
   framesDecoded: number;
   bytesReceived: number;
@@ -30,6 +40,22 @@ export interface ConnectionState {
   connectionState: string;
   iceConnectionState: string;
   signalingState: string;
+}
+
+export interface JoinOptions {
+  /**
+   * Extra query parameters for the room URL. The client understands:
+   * `relay=1` (force relay-only ICE), `noturn=1` (drop TURN servers) and
+   * `connecttimeout=<ms>` (shorten the connect watchdog). Together these make
+   * the "no usable network path" failure deterministic.
+   */
+  query?: Record<string, string>;
+}
+
+export interface ConnectionBarRow {
+  name: string;
+  /** `connecting` | `reconnecting` | `failed` | ... (from the icon's class) */
+  state: string;
 }
 
 /**
@@ -89,8 +115,9 @@ export class Peer {
   }
 
   /** Opens the room and completes the privacy/name modal. */
-  async join(roomCode: string): Promise<void> {
-    await this.page.goto(`room?id=${roomCode}`);
+  async join(roomCode: string, opts: JoinOptions = {}): Promise<void> {
+    const params = new URLSearchParams({ id: roomCode, ...(opts.query ?? {}) });
+    await this.page.goto(`room?${params.toString()}`);
     await this.page.fill('#nameInput', this.opts.name);
     await this.page.click('#start-button');
     await this.page.waitForFunction(() => {
@@ -149,6 +176,35 @@ export class Peer {
           iceConnectionState: peer!.pc.iceConnectionState,
           signalingState: peer!.pc.signalingState,
         })),
+    );
+  }
+
+  /**
+   * The ICE servers the client actually built its connections from, after any
+   * `?relay` / `?noturn` filtering. `configuration` is a top-level `const`, so
+   * it is a global lexical binding rather than a `window` property.
+   */
+  async iceServers(): Promise<string[]> {
+    return this.page.evaluate(() =>
+      configuration.iceServers.flatMap((server) =>
+        Array.isArray(server.urls) ? server.urls : [server.urls],
+      ),
+    );
+  }
+
+  /**
+   * Rows of the top connection-status bar: one per peer that has not connected,
+   * with the state encoded in the icon's class.
+   */
+  async connectionBar(): Promise<ConnectionBarRow[]> {
+    return this.page.evaluate(() =>
+      Array.from(document.querySelectorAll('#connection-bar .conn-row')).map((row) => ({
+        name: (row.querySelector('.conn-name')?.textContent ?? '').trim(),
+        state:
+          Array.from(row.querySelector('.conn-icon')?.classList ?? []).find(
+            (cls) => cls.startsWith('conn-') && cls !== 'conn-icon',
+          ) ?? '',
+      })),
     );
   }
 

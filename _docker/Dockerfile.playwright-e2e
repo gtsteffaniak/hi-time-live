@@ -1,7 +1,8 @@
 FROM ghcr.io/gtsteffaniak/playwright-base:chromium
 
-# The slim base ships no CA bundle; go mod download needs it for TLS.
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+# The slim base ships no CA bundle; go mod download needs it for TLS. coturn
+# provides the relay the relay-only e2e spec connects through.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates coturn \
     && rm -rf /var/lib/apt/lists/*
 
 # The suite launches the app itself (playwright webServer runs `go run`), so
@@ -26,8 +27,15 @@ RUN go build ./...
 
 WORKDIR /app/tests/e2e
 ENV CI=true
+# Start a local relay first so the relay-only spec can prove a relay candidate is
+# really used. The background process lives for the duration of this layer.
 RUN tsc --noEmit -p tsconfig.json \
-    && node /app/frontend/node_modules/@playwright/test/cli.js test
+    && (turnserver -n --lt-cred-mech --user hitime:hitime --realm hitime \
+        --no-cli --no-tls --no-dtls --fingerprint \
+        --listening-port 3478 --min-port 49160 --max-port 49200 --log-file=stdout &) \
+    && sleep 3 \
+    && HITIME_TURN_URL=turn:127.0.0.1:3478 HITIME_TURN_USERNAME=hitime HITIME_TURN_CREDENTIAL=hitime \
+       node /app/frontend/node_modules/@playwright/test/cli.js test
 
 ## don't export layers
 FROM scratch

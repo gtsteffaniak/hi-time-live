@@ -29,7 +29,7 @@ jobs:
   e2e:
     name: playwright e2e
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -45,14 +45,34 @@ jobs:
       - run: npx playwright install --with-deps chromium firefox
         working-directory: tests/e2e
       - run: go build ./...
+      # Host networking lets the browser on the runner reach the relay at
+      # 127.0.0.1:3478, which is what the relay-only spec needs to connect.
+      - name: start coturn relay
+        run: |
+          docker run -d --name coturn --network host coturn/coturn:4.6.2 \
+            -n --lt-cred-mech --user hitime:hitime --realm hitime \
+            --no-cli --no-tls --no-dtls --fingerprint \
+            --listening-port 3478 --min-port 49160 --max-port 49200 --log-file=stdout
+          sleep 3
+          docker logs coturn | tail -5
       - run: npx playwright test
         working-directory: tests/e2e
+        env:
+          HITIME_TURN_URL: turn:127.0.0.1:3478
+          HITIME_TURN_USERNAME: hitime
+          HITIME_TURN_CREDENTIAL: hitime
       - name: playwright e2e under a base path
         run: npx playwright test --grep-invert firefox
         working-directory: tests/e2e
         env:
           HITIME_PORT: 9013
           HITIME_BASE_PATH: /hitime
+          HITIME_TURN_URL: turn:127.0.0.1:3478
+          HITIME_TURN_USERNAME: hitime
+          HITIME_TURN_CREDENTIAL: hitime
+      - name: coturn logs
+        if: ${{ !cancelled() }}
+        run: docker logs coturn | tail -50
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
