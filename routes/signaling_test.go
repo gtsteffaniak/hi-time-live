@@ -182,6 +182,94 @@ func TestDisconnectAnnouncesRemovalAndFreesTheRoom(t *testing.T) {
 	}
 }
 
+// waitForRemovalGen polls pendingRemovals until a removal generation other than
+// `not` is installed for the user, so a test can drive the grace callback by
+// hand instead of racing the server's scheduling. Generations start at 1.
+func waitForRemovalGen(t *testing.T, code, user string, not uint64) uint64 {
+	t.Helper()
+	deadline := time.Now().Add(eventTimeout)
+	for {
+		connLock.Lock()
+		pending, ok := pendingRemovals[removalKey(code, user)]
+		connLock.Unlock()
+		if ok && pending.gen != not {
+			return pending.gen
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no removal was scheduled for %s in %s", user, code)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// scheduledRemovalGen returns the generation of the pending removal for a user,
+// or 0 when none is scheduled.
+func scheduledRemovalGen(code, user string) uint64 {
+	connLock.Lock()
+	defer connLock.Unlock()
+	if pending, ok := pendingRemovals[removalKey(code, user)]; ok {
+		return pending.gen
+	}
+	return 0
+}
+
+// A grace callback that fired while it was waiting on connLock must not tear
+// down the grace period a later disconnect installed. If it deleted the newer
+// schedule, a subsequent reconnect could no longer cancel it and the user would
+// be evicted mid-call.
+func TestStaleRemovalCallbackLeavesTheNewerGracePeriodAlone(t *testing.T) {
+	server := newTestServer(t)
+	// Long enough that the timers only fire when this test invokes them.
+	setRemovalGrace(t, 10*time.Second)
+
+	code := newCode(t)
+	alice := connectSSE(t, server, code, "alice")
+	defer alice.disconnect()
+	bob := connectSSE(t, server, code, "bob")
+	alice.expect("newUser")
+
+	// Bob drops and a removal is scheduled; remember that generation as stale.
+	bob.disconnect()
+	staleGen := waitForRemovalGen(t, code, "bob", 0)
+
+	// Bob reconnects (cancelling the stale schedule) and drops again, arming a
+	// new generation.
+	bobAgain := connectSSE(t, server, code, "bob")
+	defer bobAgain.disconnect()
+	bobAgain.disconnect()
+	newerGen := waitForRemovalGen(t, code, "bob", staleGen)
+
+	// The stale callback arrives late and must be a no-op: bob keeps his grace
+	// period and alice is not told he left.
+	expireRemoval(code, "bob", staleGen)
+
+	alice.expectSilence(300 * time.Millisecond)
+	if got := roomUsers(code); len(got) != 2 {
+		t.Errorf("room membership = %v, want alice and bob", got)
+	}
+	if got := scheduledRemovalGen(code, "bob"); got != newerGen {
+		t.Errorf("stale callback disturbed the newer grace period: gen = %d, want %d", got, newerGen)
+	}
+
+	// The newer generation still owns the departure, so it may announce it.
+	expireRemoval(code, "bob", newerGen)
+	if got := roomUsers(code); len(got) != 1 || got[0] != "alice" {
+		t.Errorf("room membership = %v, want [alice]", got)
+	}
+
+	// Drain the room with the short grace so this test leaves the global maps
+	// empty for TestJoinLeaveChurnDoesNotGrowMaps, which asserts they are.
+	setRemovalGrace(t, 50*time.Millisecond)
+	alice.disconnect()
+	deadline := time.Now().Add(eventTimeout)
+	for len(roomUsers(code)) > 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("room %s did not drain: %v", code, roomUsers(code))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func TestSecondTabDoesNotEvictTheFirst(t *testing.T) {
 	server := newTestServer(t)
 	code := newCode(t)

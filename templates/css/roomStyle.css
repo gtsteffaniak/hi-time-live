@@ -1,4 +1,90 @@
 
+/* Connection status bar: one row per peer that has not connected yet, so a
+   joining user is visible immediately instead of the room looking empty. */
+#connection-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+  padding: 0.5em 0.75em;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+.conn-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  font-size: 0.95em;
+}
+
+.conn-icon {
+  width: 0.85em;
+  height: 0.85em;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background-color: #1976ed;
+  animation: conn-pulse 1.2s ease-in-out infinite;
+}
+
+.conn-icon.conn-connected {
+  background-color: #2ecc71;
+  animation: none;
+}
+
+.conn-icon.conn-reconnecting {
+  background-color: #f1c40f;
+}
+
+.conn-icon.conn-failed {
+  background-color: #e74c3c;
+  animation: none;
+}
+
+@keyframes conn-pulse {
+  0% {
+    transform: scale(0.75);
+    opacity: 0.5;
+    box-shadow: 0 0 0 0 rgba(25, 118, 237, 0.6);
+  }
+
+  70% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 0 0.5em rgba(25, 118, 237, 0);
+  }
+
+  100% {
+    transform: scale(0.75);
+    opacity: 0.5;
+    box-shadow: 0 0 0 0 rgba(25, 118, 237, 0);
+  }
+}
+
+.conn-name {
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+}
+
+.conn-state {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.85em;
+}
+
+.conn-retry {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 0.4em;
+  color: #fff;
+  padding: 0.15em 0.6em;
+  cursor: pointer;
+}
+
 #controls {
   z-index: 4;
   position: fixed;

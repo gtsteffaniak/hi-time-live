@@ -88,15 +88,31 @@ export TURN_REST_SECRET='your-shared-secret'
 
 The room page embeds the resulting ICE server list in a `#ice-config` JSON block; the client builds its `RTCPeerConnection` from that list.
 
+For diagnosing a peer that never connects, the room page accepts:
+
+- `?relay=1` — force relay-only ICE, ignoring host and STUN candidates. This
+  reproduces "this user's NAT admits no direct path".
+- `?noturn=1` — drop TURN servers from the list.
+- `?connecttimeout=<ms>` — shorten the connect watchdog (default 20000).
+
+`make test-e2e-turn` starts a local coturn and runs the relay-only spec through
+it, which is the end-to-end proof that the configured relay is actually used.
+
 ## Testing
 
 - `make test` runs the Go unit/integration tests (room lifecycle, signaling
-  routing, isolation, disconnects) under the race detector.
+  routing, isolation, disconnects, ICE configuration) under the race detector.
 - `make test-e2e` runs the Playwright suite in `tests/e2e`, which drives one
   Chromium process per peer with deterministic fake camera/microphone input and
   asserts real media over `getStats` and pixel/tone identity.
 - `make test-e2e-base-path` runs the same suite against the app mounted under
   `/hitime` (`HITIME_BASE_PATH`), which is how it is deployed behind gportal.
+- `make test-e2e-turn` additionally starts a coturn container and runs the
+  relay-only spec, proving a relay candidate is really used. It needs host
+  networking (CI, or Docker Desktop with host networking enabled).
+- The suite covers the "never connects" failure directly: `08-ice-failure.spec.ts`
+  uses `?relay=1&noturn=1` to make "no usable network path" deterministic and
+  asserts the failure is surfaced rather than silently hanging.
 
 The signaling contract is documented in [docs/signaling-protocol.md](docs/signaling-protocol.md),
 and the remaining hardening work in [docs/hardening-plan.md](docs/hardening-plan.md).

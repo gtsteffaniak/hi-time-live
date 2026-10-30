@@ -22,6 +22,10 @@ func main() {
 	turnRESTUser := flag.String("turn-rest-user", os.Getenv("TURN_REST_USER"), "optional suffix in REST TURN usernames (default: $TURN_REST_USER)")
 
 	flag.Parse()
+	// Static ICE/TURN overrides are development-only: they are rendered into every
+	// room page, so a static TURN credential would be harvestable by anyone who can
+	// load any room URL. Outside --dev they are ignored (with a warning) unless
+	// TURN_REST_SECRET mints short-lived per-page credentials.
 	if err := routes.ConfigureICE(*devMode, *iceServers, *turnURL, *turnUsername, *turnCredential, *turnRESTSecret, *turnRESTTTL, *turnRESTUser); err != nil {
 		log.Fatalf("invalid ICE configuration: %v", err)
 	}

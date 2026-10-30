@@ -261,3 +261,131 @@ func TestICEServersRejectsBlankMemberInArray(t *testing.T) {
 		t.Fatal("expected blank ICE_SERVERS url member to be rejected")
 	}
 }
+
+func TestICEServersAcceptsSingleURLString(t *testing.T) {
+	resetICEConfig(t)
+	if err := ConfigureICE(true, `[{"urls":"stun:only.example.com:3478"}]`, "", "", "", "", 0, ""); err != nil {
+		t.Fatalf("ConfigureICE rejected a single-string urls value: %v", err)
+	}
+	if page := string(iceServersForPage()); !strings.Contains(page, "stun:only.example.com:3478") {
+		t.Errorf("single-string urls value was not rendered: %s", page)
+	}
+}
+
+// The overrides are a development-only feature: a production run must never
+// publish a relay credential on a room page, because anyone who can load any
+// room URL can read it and reuse the relay outside this app.
+func TestICEOverridesAreIgnoredOutsideDevMode(t *testing.T) {
+	resetICEConfig(t)
+	server := newTestServer(t)
+	err := ConfigureICE(false,
+		`[{"urls":"turn:relay.example.com:3478","username":"alice","credential":"s3cret"}]`,
+		"turn:relay.example.com:3478", "alice", "s3cret", "", 0, "")
+	if err != nil {
+		t.Fatalf("ConfigureICE outside dev mode returned an error: %v", err)
+	}
+
+	line := renderedIceServers(t, roomPage(t, server, server.URL+"/room?id="+newCode(t)))
+	for _, leaked := range []string{"s3cret", "relay.example.com"} {
+		if strings.Contains(line, leaked) {
+			t.Errorf("a production run published the configured relay (%q): %s", leaked, line)
+		}
+	}
+	if !strings.Contains(line, "stun:stun.l.google.com:19302") {
+		t.Errorf("a production run must serve the built-in STUN servers: %s", line)
+	}
+
+	// A malformed dev-only override must not stop a production run either.
+	if err := ConfigureICE(false, "{not json", "", "", "", "", 0, ""); err != nil {
+		t.Errorf("a malformed dev-only override blocked a production run: %v", err)
+	}
+}
+
+// The warning should name exactly the settings that were ignored.
+func TestConfiguredICEOverridesNamesOnlySetSettings(t *testing.T) {
+	cases := []struct {
+		name                                string
+		iceServers, turnURL, user, password string
+		want                                string
+	}{
+		{"nothing set", "", "", "", "", ""},
+		{"whitespace is not set", "  ", "\t", " ", "", ""},
+		{"credential only", "", "", "", "s3cret", "TURN_CREDENTIAL"},
+		{"all set", "[]", "turn:a:1", "u", "p", "ICE_SERVERS, TURN_URL, TURN_USERNAME, TURN_CREDENTIAL"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := configuredICEOverrides(tc.iceServers, tc.turnURL, tc.user, tc.password, ""); got != tc.want {
+				t.Errorf("configuredICEOverrides() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// A stream that reconnects inside the grace window must not be seen as a
+// departure: announcing removedUser immediately is what made the remaining
+// peers tear down a still-healthy RTCPeerConnection.
+func TestReconnectWithinGraceDoesNotAnnounceRemoval(t *testing.T) {
+	server := newTestServer(t)
+	setRemovalGrace(t, 500*time.Millisecond)
+
+	code := newCode(t)
+	alice := connectSSE(t, server, code, "alice")
+	defer alice.disconnect()
+	bob := connectSSE(t, server, code, "bob")
+	alice.expect("newUser")
+
+	// Drop bob's stream and reconnect the same user id before the grace expires.
+	bob.disconnect()
+	bobAgain := connectSSE(t, server, code, "bob")
+	defer bobAgain.disconnect()
+
+	alice.expectSilence(700 * time.Millisecond)
+	if got := roomUsers(code); len(got) != 2 {
+		t.Errorf("room membership = %v, want alice and bob", got)
+	}
+}
+
+// Once the grace window passes without a reconnect, the departure is announced.
+func TestDepartureAnnouncedAfterGrace(t *testing.T) {
+	server := newTestServer(t)
+	setRemovalGrace(t, 150*time.Millisecond)
+
+	code := newCode(t)
+	alice := connectSSE(t, server, code, "alice")
+	defer alice.disconnect()
+	bob := connectSSE(t, server, code, "bob")
+	alice.expect("newUser")
+
+	bob.disconnect()
+
+	if msg := alice.expect("removedUser"); msg.UserId != "bob" {
+		t.Errorf("removedUser userId = %q, want bob", msg.UserId)
+	}
+	if got := roomUsers(code); len(got) != 1 || got[0] != "alice" {
+		t.Errorf("room membership = %v, want [alice]", got)
+	}
+}
+
+// The renegotiate flag marks an ICE-restart offer. The server decodes into a
+// fixed struct and re-marshals, so a field that is not declared is silently
+// dropped and the receiver would treat a restart as a duplicate offer.
+func TestRenegotiateFlagIsForwarded(t *testing.T) {
+	server := newTestServer(t)
+	code := newCode(t)
+	alice := connectSSE(t, server, code, "alice")
+	bob := connectSSE(t, server, code, "bob")
+	defer alice.disconnect()
+	defer bob.disconnect()
+	alice.expect("newUser")
+
+	resp := postEvent(t, server, eventMessage{
+		EventType: "newOffer", UserId: "alice", ForUser: "bob", Code: code, Offer: "v=0", Renegotiate: true,
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("newOffer status = %d, want 200", resp.StatusCode)
+	}
+	if msg := bob.expect("newOffer"); !msg.Renegotiate {
+		t.Errorf("renegotiate flag was dropped while forwarding")
+	}
+}

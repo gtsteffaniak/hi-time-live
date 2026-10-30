@@ -110,7 +110,13 @@ func validateICEServerURLs(servers []ICEServer) error {
 	return nil
 }
 
-// defaultSTUNServers is used when nothing is configured.
+// defaultSTUNServers is used when nothing is configured. Only hosts that still
+// answer are kept: the list this replaced included the long-dead
+// stun.stunprotocol.org and several stale consumer-VoIP hosts, which added
+// gathering latency without ever contributing a usable candidate.
+//
+// STUN alone cannot traverse symmetric NAT or a restrictive firewall, so a
+// deployment that must reach those users needs a TURN relay (see TURN_URL).
 var defaultSTUNServers = []ICEServer{
 	{URLs: json.RawMessage(`"stun:stun.l.google.com:19302"`)},
 	{URLs: json.RawMessage(`"stun:stun1.l.google.com:19302"`)},

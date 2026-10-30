@@ -32,6 +32,21 @@ func mustJoin(t *testing.T, code, user string) joinResult {
 	return result
 }
 
+// setRemovalGrace shrinks the departure grace window for a test. It takes
+// connLock because the server goroutines read removalGrace while scheduling.
+func setRemovalGrace(t *testing.T, d time.Duration) {
+	t.Helper()
+	connLock.Lock()
+	old := removalGrace
+	removalGrace = d
+	connLock.Unlock()
+	t.Cleanup(func() {
+		connLock.Lock()
+		removalGrace = old
+		connLock.Unlock()
+	})
+}
+
 // newTestServer serves the real routes with templates loaded from the repo.
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -39,6 +54,12 @@ func newTestServer(t *testing.T) *httptest.Server {
 	if err := templateRenderer.loadTemplates(); err != nil {
 		t.Fatalf("could not load templates: %v", err)
 	}
+	// The real grace window is seconds long; tests assert departure promptly and
+	// schedule their own reconnects, so shrink it. Timers already scheduled by an
+	// earlier test keep their original delay and still clean up after themselves.
+	setRemovalGrace(t, 50*time.Millisecond)
+	activeICE = iceConfig{}
+	t.Cleanup(func() { activeICE = iceConfig{} })
 	server := httptest.NewServer(NewRouter())
 	t.Cleanup(server.Close)
 	return server
