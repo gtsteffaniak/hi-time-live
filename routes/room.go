@@ -98,6 +98,9 @@ func roomHandler(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{}
 	data["basePath"] = BasePath
 	data["code"] = id
+	// The client builds its RTCPeerConnection from this list, so a TURN relay can
+	// be added by configuration without rebuilding the frontend.
+	data["iceServers"] = iceServersForPage()
 	data["privacyModal"] = map[string]string{
 		"modalType": "privacy",
 		"hidden":    "",
