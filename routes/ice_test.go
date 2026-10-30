@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -193,6 +194,33 @@ func TestIceConfigEndpointRefreshesRESTCredentials(t *testing.T) {
 		t.Fatalf("ConfigureICE: %v", err)
 	}
 	code := newCode(t)
+	fixed := time.Unix(1_700_000_000, 0)
+	nowFunc = func() time.Time { return fixed }
+	t.Cleanup(func() { nowFunc = time.Now })
+
+	first := fetchIceConfigTurn(t, server, code)
+	secondTime := fixed.Add(30 * time.Minute)
+	nowFunc = func() time.Time { return secondTime }
+	second := fetchIceConfigTurn(t, server, code)
+
+	exp1, err := turnRESTUsernameExpiry(first.Username)
+	if err != nil {
+		t.Fatalf("first username: %v", err)
+	}
+	exp2, err := turnRESTUsernameExpiry(second.Username)
+	if err != nil {
+		t.Fatalf("second username: %v", err)
+	}
+	if exp2 <= exp1 {
+		t.Fatalf("second expiry %d should be after first %d", exp2, exp1)
+	}
+	if second.Credential == first.Credential {
+		t.Fatal("expected refreshed REST credential to change")
+	}
+}
+
+func fetchIceConfigTurn(t *testing.T, server *httptest.Server, code string) *ICEServer {
+	t.Helper()
 	resp, err := server.Client().Get(server.URL + "/ice-config?code=" + code)
 	if err != nil {
 		t.Fatalf("GET ice-config: %v", err)
@@ -226,6 +254,46 @@ func TestIceConfigEndpointRefreshesRESTCredentials(t *testing.T) {
 	}
 	if strings.Contains(string(body), "shared-secret") {
 		t.Fatalf("ice-config exposed the shared secret: %s", body)
+	}
+	return turn
+}
+
+func turnRESTUsernameExpiry(username string) (int64, error) {
+	part := strings.SplitN(username, ":", 2)[0]
+	return strconv.ParseInt(part, 10, 64)
+}
+
+func TestIceConfigEndpointRejectsInvalidCode(t *testing.T) {
+	resetICEConfig(t)
+	server := newTestServer(t)
+	if err := ConfigureICE(false, "", "turn:turn.example.com:3478", "", "", "shared-secret", time.Hour, "hitime"); err != nil {
+		t.Fatalf("ConfigureICE: %v", err)
+	}
+	resp, err := server.Client().Get(server.URL + "/ice-config?code=invalid!")
+	if err != nil {
+		t.Fatalf("GET ice-config: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestTurnRESTSecretNotTrimmedForHMAC(t *testing.T) {
+	secret := " padded-secret "
+	user, pass := turnRESTCredential(secret, time.Hour, "room")
+	mac := hmac.New(sha1.New, []byte(secret))
+	_, _ = mac.Write([]byte(user))
+	want := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+	if pass != want {
+		t.Fatalf("credential must use untrimmed secret bytes")
+	}
+}
+
+func TestInvalidIceURLEmptyHostRejected(t *testing.T) {
+	resetICEConfig(t)
+	if err := ConfigureICE(true, "", "turn::3478", "u", "p", "", 0, ""); err == nil {
+		t.Fatal("expected turn URL with empty host to be rejected")
 	}
 }
 

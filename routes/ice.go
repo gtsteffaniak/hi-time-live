@@ -36,6 +36,9 @@ type iceConfig struct {
 
 var activeICE iceConfig
 
+// nowFunc is the clock used for TURN REST credential expiry; tests may replace it.
+var nowFunc = time.Now
+
 // iceServerURLs normalizes an RTCIceServer's `urls` value — either a single URL
 // string or an array of them — into the list the browser will use.
 func iceServerURLs(raw json.RawMessage) []string {
@@ -66,7 +69,11 @@ func validICEURL(raw string) bool {
 	}
 	switch u.Scheme {
 	case "stun", "stuns", "turn", "turns":
-		return u.Opaque != ""
+		if u.Opaque == "" {
+			return false
+		}
+		hostPort, err := url.Parse("https://" + u.Opaque)
+		return err == nil && hostPort.Hostname() != ""
 	default:
 		return false
 	}
@@ -147,7 +154,7 @@ func configuredICEOverrides(iceServersRaw, turnURL, turnUsername, turnCredential
 // turnRESTCredential builds a coturn-compatible time-limited username and
 // password: base64(HMAC-SHA1(secret, username)) with username = expiry[:suffix].
 func turnRESTCredential(secret string, ttl time.Duration, userSuffix string) (username, credential string) {
-	expiry := time.Now().Add(ttl).Unix()
+	expiry := nowFunc().Add(ttl).Unix()
 	username = strconv.FormatInt(expiry, 10)
 	if strings.TrimSpace(userSuffix) != "" {
 		username = username + ":" + strings.TrimSpace(userSuffix)
@@ -172,12 +179,13 @@ func ConfigureICE(devMode bool, iceServersRaw, turnURL, turnUsername, turnCreden
 		overrideRaw:        strings.TrimSpace(iceServersRaw),
 		turnUsername:       turnUsername,
 		turnCredential:     turnCredential,
-		turnRESTSecret:     strings.TrimSpace(turnRESTSecret),
+		turnRESTSecret:     turnRESTSecret,
 		turnRESTTTL:        turnRESTTTL,
 		turnRESTUserSuffix: turnRESTUserSuffix,
 	}
 
-	ignoredInProduction := !devMode && activeICE.turnRESTSecret == ""
+	restSecretConfigured := strings.TrimSpace(activeICE.turnRESTSecret) != ""
+	ignoredInProduction := !devMode && !restSecretConfigured
 	for _, u := range strings.Split(turnURL, ",") {
 		if u = strings.TrimSpace(u); u != "" {
 			if !ignoredInProduction && !validTURNURL(u) {
@@ -189,10 +197,14 @@ func ConfigureICE(devMode bool, iceServersRaw, turnURL, turnUsername, turnCreden
 
 	staticTurn := len(activeICE.turnURLs) > 0 &&
 		(strings.TrimSpace(turnUsername) != "" || strings.TrimSpace(turnCredential) != "")
-	restTurn := len(activeICE.turnURLs) > 0 && activeICE.turnRESTSecret != ""
+	restTurn := len(activeICE.turnURLs) > 0 && restSecretConfigured
 
 	if !devMode {
-		ignored := configuredICEOverrides(iceServersRaw, turnURL, turnUsername, turnCredential, "")
+		ignoredTURNURL := turnURL
+		if restTurn {
+			ignoredTURNURL = ""
+		}
+		ignored := configuredICEOverrides(iceServersRaw, ignoredTURNURL, turnUsername, turnCredential, "")
 		if activeICE.overrideRaw != "" || staticTurn {
 			if ignored != "" {
 				slog.Warn("ignoring ICE/TURN settings that would publish long-lived relay credentials outside dev mode",
@@ -206,7 +218,7 @@ func ConfigureICE(devMode bool, iceServersRaw, turnURL, turnUsername, turnCreden
 			// REST credentials are minted per page; the shared secret stays on the server.
 			return validateRESTConfig()
 		}
-		if activeICE.turnRESTSecret != "" {
+		if restSecretConfigured {
 			return validateRESTConfig()
 		}
 		if ignored != "" && !restTurn {
@@ -233,15 +245,12 @@ func ConfigureICE(devMode bool, iceServersRaw, turnURL, turnUsername, turnCreden
 		return nil
 	}
 
-	if len(activeICE.turnURLs) > 0 && activeICE.turnRESTSecret == "" &&
+	if len(activeICE.turnURLs) > 0 && !restSecretConfigured &&
 		(strings.TrimSpace(turnUsername) == "" || strings.TrimSpace(turnCredential) == "") {
 		return fmt.Errorf("TURN_URL requires both TURN_USERNAME and TURN_CREDENTIAL in dev mode when TURN_REST_SECRET is not set")
 	}
 
-	if restTurn {
-		return validateRESTConfig()
-	}
-	if activeICE.turnRESTSecret != "" {
+	if restSecretConfigured {
 		return validateRESTConfig()
 	}
 	return nil
@@ -306,7 +315,7 @@ func iceServersForPage() template.JS {
 
 // turnRESTEnabled reports whether room pages should refresh ICE credentials.
 func turnRESTEnabled() bool {
-	return activeICE.turnRESTSecret != "" && len(activeICE.turnURLs) > 0
+	return strings.TrimSpace(activeICE.turnRESTSecret) != "" && len(activeICE.turnURLs) > 0
 }
 
 // iceConfigHandler returns a fresh ICE server list for long-lived room tabs.

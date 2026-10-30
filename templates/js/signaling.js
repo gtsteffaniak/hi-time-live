@@ -69,6 +69,7 @@ const parsedConnectTimeout = parseInt(debugParams.get('connecttimeout'), 10);
 const connectTimeoutMs = Number.isFinite(parsedConnectTimeout)
     ? Math.min(Math.max(parsedConnectTimeout, 2000), 120000)
     : 20000;
+const iceConfigFetchTimeoutMs = 3000;
 // "disconnected" is often a Wi-Fi blip rather than a dead peer, so give ICE a
 // chance to heal before restarting it, and give the restart a chance to land
 // before declaring the peer failed.
@@ -82,8 +83,13 @@ const maxIceRestarts = 2;
 async function currentIceServers() {
     const element = document.getElementById('ice-config');
     if (element && element.dataset.turnRest === 'true') {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), iceConfigFetchTimeoutMs);
         try {
-            const resp = await fetch(`ice-config?code={{ .code }}`, { cache: 'no-store' });
+            const resp = await fetch(`ice-config?code={{ .code }}`, {
+                cache: 'no-store',
+                signal: controller.signal,
+            });
             if (resp.ok) {
                 const parsed = await resp.json();
                 if (Array.isArray(parsed) && parsed.length) {
@@ -92,6 +98,8 @@ async function currentIceServers() {
             }
         } catch (err) {
             console.error("could not refresh ICE configuration:", err);
+        } finally {
+            clearTimeout(timer);
         }
     }
     return configuration.iceServers;
@@ -446,7 +454,7 @@ async function newPeer(id) {
 
 // resetPeer replaces a peer's dead RTCPeerConnection while keeping its record
 // and tile, so a retry or a remote reconnect does not remove the user's view.
-function resetPeer(peer) {
+async function resetPeer(peer) {
     clearConnectWatchdog(peer);
     try {
         peer.pc.close();
@@ -455,7 +463,8 @@ function resetPeer(peer) {
     }
     const remoteVideo = document.getElementById(peer.id + '-remoteVideo');
     if (remoteVideo) remoteVideo.srcObject = null;
-    peer.pc = new RTCPeerConnection(configuration);
+    const iceServers = await currentIceServers();
+    peer.pc = new RTCPeerConnection({ ...configuration, iceServers });
     peer.state = "new";
     peer.restartCount = 0;
     peer.pendingCandidates = [];
@@ -562,6 +571,8 @@ async function attemptIceRestart(peer, reason) {
     renderConnectionBar();
     console.log("restarting ICE with", peer.id, "attempt", peer.restartCount, "reason:", reason);
     try {
+        const iceServers = await currentIceServers();
+        peer.pc.setConfiguration({ ...configuration, iceServers });
         await offerPeer(peer, { iceRestart: true });
     } catch (err) {
         console.error("ICE restart failed for", peer.id, err);
@@ -573,7 +584,7 @@ async function retryPeer(id) {
     const peer = peers[id];
     if (!peer) return;
     console.log("retrying peer", id);
-    resetPeer(peer);
+    await resetPeer(peer);
     startConnectWatchdog(peer);
     try {
         await addLocalTracks(peer);
@@ -745,7 +756,7 @@ async function startOffer(id) {
         peer = await newPeer(id)
         if (!peer) return
     } else if (peer.state === "failed" || peer.state === "reconnecting") {
-        resetPeer(peer)
+        await resetPeer(peer)
     }
     await addLocalTracks(peer)
     await offerPeer(peer)
@@ -766,7 +777,7 @@ async function startAnswer(id, msg) {
                 // means the old connection is gone, so replace it rather than
                 // deadlock on a stale record.
                 console.log("remote restarted negotiation, resetting peer", id)
-                resetPeer(peer)
+                await resetPeer(peer)
             }
         }
     } else {
