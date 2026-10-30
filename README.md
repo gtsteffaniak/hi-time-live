@@ -56,6 +56,38 @@ location /hitime/ {
 
 Note: The frontend features require an HTTPS connection, so any build should be done behind one. I have included the `generate_cert.go` standard library for quick mock certificate creation for local testing.
 
+### ICE and TURN configuration
+
+Browsers need STUN to discover public addresses and TURN to relay media when a direct peer path is blocked (symmetric NAT, corporate firewalls, and similar). By default the app serves a small set of public Google STUN servers. To reach callers on restrictive networks, point the app at your own TURN relay.
+
+| Setting | Flag | Description |
+| --- | --- | --- |
+| `ICE_SERVERS` | `--ice-servers` | **Dev only.** JSON array of `RTCIceServer` objects; replaces the built-in list entirely. |
+| `TURN_URL` | `--turn-url` | Comma-separated TURN URL(s), e.g. `turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349`. Appended alongside the default STUN servers unless `ICE_SERVERS` is set. |
+| `TURN_USERNAME` / `TURN_CREDENTIAL` | `--turn-username`, `--turn-credential` | **Dev only.** Static relay credentials embedded in each room page (anyone who can open a room URL can reuse them). |
+| `TURN_REST_SECRET` | `--turn-rest-secret` | Shared secret for coturn-style time-limited credentials. Safe for production: the secret stays on the server and each room page gets a fresh username/password pair. Requires `TURN_URL`. |
+| `TURN_REST_TTL` | `--turn-rest-ttl` | Lifetime of REST-minted credentials (default `24h`). |
+| `TURN_REST_USER` | `--turn-rest-user` | Optional suffix in REST usernames (`<expiry>:<suffix>`). |
+
+Example with a local coturn instance in development:
+
+```bash
+./hi-time-live --dev \
+  --turn-url 'turn:localhost:3478' \
+  --turn-username devuser \
+  --turn-credential devpass
+```
+
+Example for production using REST credentials (configure the same shared secret in coturn with `use-auth-secret`):
+
+```bash
+export TURN_URL='turn:turn.example.com:3478?transport=udp'
+export TURN_REST_SECRET='your-shared-secret'
+./hi-time-live
+```
+
+The room page embeds the resulting ICE server list in a `#ice-config` JSON block; the client builds its `RTCPeerConnection` from that list.
+
 ## Testing
 
 - `make test` runs the Go unit/integration tests (room lifecycle, signaling

@@ -10,20 +10,33 @@ const videoConstraints = {
 // VP8 stays on the list for interop: Firefox builds without OpenH264 cannot
 // encode H264, and removing it would leave those peers sending no video at all.
 const allowedCodecs = ['VP9', 'H264', 'VP8'];
+
+// Rendered server-side into #ice-config from ICE_SERVERS / TURN_* settings
+// (see routes/ice.go). When nothing is configured the server still sends the
+// default STUN list; STUN alone cannot traverse symmetric NAT or restrictive
+// firewalls, so those deployments need a TURN relay configured on the server.
+function readRenderedIceServers() {
+    const element = document.getElementById('ice-config');
+    if (!element) return [];
+    try {
+        const parsed = JSON.parse(element.textContent);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+        console.error("unparseable ICE configuration:", err);
+        return [];
+    }
+}
+
+const defaultIceServers = [
+    { 'urls': 'stun:stun.l.google.com:19302' },
+    { 'urls': 'stun:stun1.l.google.com:19302' },
+    { 'urls': 'stun:stun2.l.google.com:19302' },
+    { 'urls': 'stun:stun3.l.google.com:19302' },
+    { 'urls': 'stun:stun4.l.google.com:19302' },
+];
+const renderedIceServers = readRenderedIceServers();
 const configuration = {
-    'iceServers': [
-        { 'urls': 'stun:stun.l.google.com:19302' },
-        { 'urls': 'stun:stun1.l.google.com:19302' },
-        { 'urls': 'stun:stun2.l.google.com:19302' },
-        { 'urls': 'stun:stun3.l.google.com:19302' },
-        { 'urls': 'stun:stun4.l.google.com:19302' },
-        { 'urls': 'stun:stun.ekiga.net' },
-        { 'urls': 'stun:stun.ideasip.com' },
-        { 'urls': 'stun:stun.stunprotocol.org:3478' },
-        { 'urls': 'stun:stun.voiparound.com' },
-        { 'urls': 'stun:stun.voipbuster.com' },
-        { 'urls': 'stun:stun.voipstunt.com' },
-    ]
+    'iceServers': renderedIceServers.length ? renderedIceServers : defaultIceServers,
 };
 let localUserId = "notset"
 
