@@ -8,8 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )

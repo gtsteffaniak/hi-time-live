@@ -32,12 +32,16 @@ func (w *ResponseWriterWrapper) WriteHeader(statusCode int) {
 	}
 }
 
+// Flush forwards to the underlying writer when it supports http.Flusher,
+// so streamed responses still flush through the logging wrapper.
 func (w *ResponseWriterWrapper) Flush() {
 	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
 }
 
+// Write writes data to the underlying response and adds the bytes written to
+// PayloadSize for request logging.
 func (w *ResponseWriterWrapper) Write(data []byte) (int, error) {
 	size, err := w.ResponseWriter.Write(data)
 	w.PayloadSize += size

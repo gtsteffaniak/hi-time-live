@@ -49,6 +49,9 @@ func MountRouter(router http.Handler, basePath string) http.Handler {
 	return outer
 }
 
+// StartRouter loads templates, mounts the router under basePath, and serves on
+// port, using TLS when cert.pem and key.pem are present and plain HTTP otherwise.
+// It blocks until the server exits.
 func StartRouter(devMode bool, port int, basePath string) {
 	BasePath = NormalizeBasePath(basePath)
 	if BasePath != "" {

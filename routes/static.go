@@ -66,6 +66,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// FindFiles walks rootPath and returns the paths of every regular file under it.
 func FindFiles(rootPath string) ([]string, error) {
 	var files []string
 	err := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
