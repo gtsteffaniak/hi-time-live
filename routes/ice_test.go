@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -204,7 +205,59 @@ func TestIceConfigEndpointRefreshesRESTCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading body: %v", err)
 	}
-	if !strings.Contains(string(body), "turn:turn.example.com:3478") {
-		t.Fatalf("ice-config missing TURN URL: %s", body)
+	var servers []ICEServer
+	if err := json.Unmarshal(body, &servers); err != nil {
+		t.Fatalf("decoding ice-config: %v", err)
+	}
+	var turn *ICEServer
+	for i := range servers {
+		for _, u := range iceServerURLs(servers[i].URLs) {
+			if strings.Contains(u, "turn:turn.example.com:3478") {
+				turn = &servers[i]
+				break
+			}
+		}
+	}
+	if turn == nil {
+		t.Fatalf("ice-config missing TURN entry: %s", body)
+	}
+	if turn.Username == "" || turn.Credential == "" {
+		t.Fatalf("ice-config TURN entry lacks REST credential: %s", body)
+	}
+	if strings.Contains(string(body), "shared-secret") {
+		t.Fatalf("ice-config exposed the shared secret: %s", body)
+	}
+}
+
+func TestTurnURLRejectsStunScheme(t *testing.T) {
+	resetICEConfig(t)
+	if err := ConfigureICE(true, "", "stun:stun.example.com:3478", "u", "p", "", 0, ""); err == nil {
+		t.Fatal("expected STUN URL in TURN_URL to be rejected")
+	}
+}
+
+func TestProductionIgnoresUnusedTurnURLValidation(t *testing.T) {
+	resetICEConfig(t)
+	server := newTestServer(t)
+	if err := ConfigureICE(false, "", "http://not-turn.example.com:3478", "alice", "s3cret", "", 0, ""); err != nil {
+		t.Fatalf("production should ignore unused TURN_URL even when malformed: %v", err)
+	}
+	line := renderedIceServers(t, roomPage(t, server, server.URL+"/room?id="+newCode(t)))
+	if strings.Contains(line, "not-turn.example.com") {
+		t.Fatalf("ignored TURN_URL must not appear on the page: %s", line)
+	}
+}
+
+func TestInvalidTurnURLMissingHostIsRejected(t *testing.T) {
+	resetICEConfig(t)
+	if err := ConfigureICE(true, "", "turn:", "u", "p", "", 0, ""); err == nil {
+		t.Fatal("expected bare turn: URL to be rejected")
+	}
+}
+
+func TestICEServersRejectsBlankMemberInArray(t *testing.T) {
+	resetICEConfig(t)
+	if err := ConfigureICE(true, `[{"urls":["stun:custom.example.com:3478",""]}]`, "", "", "", "", 0, ""); err == nil {
+		t.Fatal("expected blank ICE_SERVERS url member to be rejected")
 	}
 }

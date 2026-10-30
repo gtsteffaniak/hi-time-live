@@ -66,15 +66,42 @@ func validICEURL(raw string) bool {
 	}
 	switch u.Scheme {
 	case "stun", "stuns", "turn", "turns":
-		return true
+		return u.Opaque != ""
 	default:
 		return false
 	}
 }
 
+func validTURNURL(raw string) bool {
+	if !validICEURL(raw) {
+		return false
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	return u.Scheme == "turn" || u.Scheme == "turns"
+}
+
+func iceServerURLMembers(raw json.RawMessage) []string {
+	var single string
+	if err := json.Unmarshal(raw, &single); err == nil {
+		return []string{single}
+	}
+	var many []string
+	if err := json.Unmarshal(raw, &many); err != nil {
+		return nil
+	}
+	return many
+}
+
 func validateICEServerURLs(servers []ICEServer) error {
 	for i, server := range servers {
-		for j, iceURL := range iceServerURLs(server.URLs) {
+		members := iceServerURLMembers(server.URLs)
+		for j, iceURL := range members {
+			if strings.TrimSpace(iceURL) == "" {
+				return fmt.Errorf("ICE_SERVERS[%d].urls[%d] must not be blank", i, j)
+			}
 			if !validICEURL(iceURL) {
 				return fmt.Errorf("ICE_SERVERS[%d].urls[%d] %q must use the stun, stuns, turn, or turns scheme", i, j, iceURL)
 			}
@@ -144,10 +171,11 @@ func ConfigureICE(devMode bool, iceServersRaw, turnURL, turnUsername, turnCreden
 		turnRESTUserSuffix: turnRESTUserSuffix,
 	}
 
+	ignoredInProduction := !devMode && activeICE.turnRESTSecret == ""
 	for _, u := range strings.Split(turnURL, ",") {
 		if u = strings.TrimSpace(u); u != "" {
-			if !validICEURL(u) {
-				return fmt.Errorf("TURN_URL entry %q must use the stun, stuns, turn, or turns scheme", u)
+			if !ignoredInProduction && !validTURNURL(u) {
+				return fmt.Errorf("TURN_URL entry %q must use the turn or turns scheme", u)
 			}
 			activeICE.turnURLs = append(activeICE.turnURLs, u)
 		}

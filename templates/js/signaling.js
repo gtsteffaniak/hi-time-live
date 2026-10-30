@@ -63,6 +63,9 @@ let localUserId = "notset"
 // messages are dropped deliberately instead of corrupting a live connection.
 // state: new -> offering|answering -> connected -> closed
 const peers = {};
+// In-flight newPeer calls await ICE refresh; closePeer clears the token so a
+// departed user is not registered after the fetch completes.
+const pendingPeers = {};
 // A trickled candidate or mediaState can beat the offer that creates the peer;
 // they are parked here and consumed when the peer record is created.
 const earlyCandidates = {};
@@ -275,7 +278,13 @@ async function newPeer(id) {
         return peers[id]
     }
     console.log("adding new peer:", id)
+    const token = {};
+    pendingPeers[id] = token;
     const iceServers = await currentIceServers();
+    if (pendingPeers[id] !== token) {
+        return null
+    }
+    delete pendingPeers[id];
     const peer = {
         id: id,
         pc: new RTCPeerConnection({ iceServers: iceServers }),
@@ -312,6 +321,7 @@ async function newPeer(id) {
 }
 
 function closePeer(id) {
+    delete pendingPeers[id];
     const peer = peers[id];
     if (peer) {
         peer.state = "closed";
@@ -397,6 +407,7 @@ async function startOffer(id) {
         return
     }
     const peer = await newPeer(id)
+    if (!peer) return
     await addLocalTracks(peer)
     await offerPeer(peer)
 }
@@ -409,6 +420,7 @@ async function startAnswer(id, msg) {
         return
     }
     const peer = await newPeer(id)
+    if (!peer) return
     await addLocalTracks(peer)
     await answerPeer(peer, msg)
 }
