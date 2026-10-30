@@ -17,15 +17,18 @@ const allowedCodecs = ['VP9', 'H264', 'VP8'];
 // run publishes only short-lived TURN_REST_SECRET credentials, which
 // currentIceServers() refreshes from /ice-config before each new peer. STUN alone cannot traverse symmetric NAT or a
 // restrictive firewall, which is why peers that "never connect" need a relay.
+// readRenderedIceServers returns the server-rendered list, or null when the
+// element is missing or unparseable. An explicit empty list (ICE_SERVERS='[]'
+// in dev mode) is kept as-is so it replaces the defaults, as documented.
 function readRenderedIceServers() {
     const element = document.getElementById('ice-config');
-    if (!element) return [];
+    if (!element) return null;
     try {
         const parsed = JSON.parse(element.textContent);
-        return Array.isArray(parsed) ? parsed : [];
+        return Array.isArray(parsed) ? parsed : null;
     } catch (err) {
         console.error("unparseable ICE configuration:", err);
-        return [];
+        return null;
     }
 }
 
@@ -38,7 +41,7 @@ const defaultIceServers = [
     { 'urls': 'stun:stun4.l.google.com:19302' },
 ];
 const configuration = {
-    'iceServers': (Array.isArray(renderedIceServers) && renderedIceServers.length) ? renderedIceServers : defaultIceServers,
+    'iceServers': renderedIceServers ?? defaultIceServers,
 };
 
 function iceServerUrls(server) {
