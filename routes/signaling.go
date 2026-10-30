@@ -89,7 +89,7 @@ func expireRemoval(roomId, userId string, gen uint64) {
 		return
 	}
 	delete(pendingRemovals, key)
-	if hasConnectionLocked(roomId, userId) {
+	if userHasConnectionLocked(roomId, userId) {
 		connLock.Unlock()
 		return
 	}
@@ -112,6 +112,7 @@ type connection struct {
 }
 
 var connections = make(map[string]*connection)
+var roomConnections = make(map[string]map[string]*connection)
 var connLock sync.Mutex
 
 type eventMessage struct {
@@ -171,23 +172,15 @@ func sseHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	connLock.Lock()
-	connections[conn.connId] = conn
+	registerConnection(conn)
 	// This stream may be replacing one that just closed; keep the membership.
 	cancelPendingRemoval(roomId, userId)
 	connLock.Unlock()
 
 	defer func() {
 		connLock.Lock()
-		delete(connections, conn.connId)
-		// Another tab or a reconnect may still hold the same user id in this room;
-		// only announce the departure once the last one is gone.
-		stillPresent := false
-		for _, other := range connections {
-			if other.roomId == roomId && other.userId == userId {
-				stillPresent = true
-				break
-			}
-		}
+		unregisterConnection(conn.connId, roomId)
+		stillPresent := userHasConnectionLocked(roomId, userId)
 		connLock.Unlock()
 		if stillPresent {
 			return
@@ -279,16 +272,7 @@ func postEventHandler(w http.ResponseWriter, r *http.Request) {
 func hasConnection(roomId, userId string) bool {
 	connLock.Lock()
 	defer connLock.Unlock()
-	return hasConnectionLocked(roomId, userId)
-}
-
-func hasConnectionLocked(roomId, userId string) bool {
-	for _, conn := range connections {
-		if conn.roomId == roomId && conn.userId == userId {
-			return true
-		}
-	}
-	return false
+	return userHasConnectionLocked(roomId, userId)
 }
 
 // send never blocks: a client that cannot keep up loses messages rather than
@@ -305,8 +289,8 @@ func (c *connection) send(msg eventMessage) {
 func sendToOthers(roomId, userId string, event eventMessage) {
 	connLock.Lock()
 	defer connLock.Unlock()
-	for _, conn := range connections {
-		if conn.roomId == roomId && conn.userId != userId {
+	for _, conn := range roomConnections[roomId] {
+		if conn.userId != userId {
 			conn.send(event)
 		}
 	}
@@ -316,8 +300,8 @@ func sendToOthers(roomId, userId string, event eventMessage) {
 func sendMessageToUser(roomId, userId string, message eventMessage) {
 	connLock.Lock()
 	defer connLock.Unlock()
-	for _, conn := range connections {
-		if conn.roomId == roomId && conn.userId == userId {
+	for _, conn := range roomConnections[roomId] {
+		if conn.userId == userId {
 			conn.send(message)
 		}
 	}

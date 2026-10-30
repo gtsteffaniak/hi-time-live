@@ -12,10 +12,10 @@ const videoConstraints = {
 const allowedCodecs = ['VP9', 'H264', 'VP8'];
 
 // Rendered server-side into the #ice-config element from --ice-servers /
-// --turn-url (see routes/ice.go), so a development run can add a TURN relay
-// without rebuilding the frontend. Those overrides are dev-only: a production
-// run serves the built-in STUN servers, so a relay credential is never
-// published to the page. STUN alone cannot traverse symmetric NAT or a
+// --turn-url (see routes/ice.go), so a TURN relay can be added without
+// rebuilding the frontend. Static relay credentials are dev-only; a production
+// run publishes only short-lived TURN_REST_SECRET credentials, which
+// currentIceServers() refreshes from /ice-config before each new peer. STUN alone cannot traverse symmetric NAT or a
 // restrictive firewall, which is why peers that "never connect" need a relay.
 function readRenderedIceServers() {
     const element = document.getElementById('ice-config');
@@ -56,20 +56,54 @@ const debugParams = new URLSearchParams(window.location.search);
 if (debugParams.get('relay')) {
     configuration.iceTransportPolicy = 'relay';
 }
-if (debugParams.get('noturn')) {
-    configuration.iceServers = configuration.iceServers.filter(
+// applyDebugIceFilters applies ?noturn=1 to a server list, so refreshed REST
+// credentials obey the same debug switches as the rendered list.
+function applyDebugIceFilters(servers) {
+    if (!debugParams.get('noturn')) return servers;
+    return servers.filter(
         (server) => !iceServerUrls(server).some((url) => /^turns?:/i.test(url))
     );
 }
+configuration.iceServers = applyDebugIceFilters(configuration.iceServers);
 const parsedConnectTimeout = parseInt(debugParams.get('connecttimeout'), 10);
 const connectTimeoutMs = Number.isFinite(parsedConnectTimeout)
     ? Math.min(Math.max(parsedConnectTimeout, 2000), 120000)
     : 20000;
+const iceConfigFetchTimeoutMs = 3000;
 // "disconnected" is often a Wi-Fi blip rather than a dead peer, so give ICE a
 // chance to heal before restarting it, and give the restart a chance to land
 // before declaring the peer failed.
 const iceDisconnectGraceMs = 5000;
 const maxIceRestarts = 2;
+
+// currentIceServers returns the ICE list for a new RTCPeerConnection. With
+// TURN REST credentials enabled it fetches a fresh list so long-lived tabs do
+// not use expired credentials, and stores it in configuration so resetPeer
+// reuses it. Any failure falls back to the last known list.
+async function currentIceServers() {
+    const element = document.getElementById('ice-config');
+    if (element && element.dataset.turnRest === 'true') {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), iceConfigFetchTimeoutMs);
+        try {
+            const resp = await fetch(`ice-config?code={{ .code }}`, {
+                cache: 'no-store',
+                signal: controller.signal,
+            });
+            if (resp.ok) {
+                const parsed = await resp.json();
+                if (Array.isArray(parsed) && parsed.length) {
+                    configuration.iceServers = applyDebugIceFilters(parsed);
+                }
+            }
+        } catch (err) {
+            console.error("could not refresh ICE configuration:", err);
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+    return configuration.iceServers;
+}
 
 let localUserId = "notset"
 
@@ -78,6 +112,9 @@ let localUserId = "notset"
 // deliberately instead of corrupting a live connection.
 // state: new -> offering|answering -> connected -> reconnecting -> failed|closed
 const peers = {};
+// In-flight newPeer calls await ICE refresh; closePeer clears the token so a
+// departed user is not registered after the fetch completes.
+const pendingPeers = {};
 // A trickled candidate or mediaState can beat the offer that creates the peer;
 // they are parked here and consumed when the peer record is created.
 const earlyCandidates = {};
@@ -379,14 +416,22 @@ function wirePeer(peer) {
 // newPeer registers a peer record and creates its remote tile. Candidates
 // trickle out one event at a time as they are found rather than waiting for
 // gathering to complete and bundling them into the SDP.
-function newPeer(id) {
+async function newPeer(id) {
     if (peers[id]) {
         return peers[id]
     }
     console.log("adding new peer:", id)
+    const token = {};
+    pendingPeers[id] = token;
+    const iceServers = await currentIceServers();
+    if (pendingPeers[id] !== token) {
+        return null
+    }
+    delete pendingPeers[id];
     const peer = {
         id: id,
-        pc: new RTCPeerConnection(configuration),
+        // Spread configuration so ?relay=1's iceTransportPolicy still applies.
+        pc: new RTCPeerConnection({ ...configuration, iceServers: iceServers }),
         state: "new",
         // Exactly one side of a pair is impolite, so a colliding renegotiation
         // (both sides restarting ICE at once) has a deterministic winner.
@@ -409,7 +454,7 @@ function newPeer(id) {
 
 // resetPeer replaces a peer's dead RTCPeerConnection while keeping its record
 // and tile, so a retry or a remote reconnect does not remove the user's view.
-function resetPeer(peer) {
+async function resetPeer(peer) {
     clearConnectWatchdog(peer);
     try {
         peer.pc.close();
@@ -418,7 +463,8 @@ function resetPeer(peer) {
     }
     const remoteVideo = document.getElementById(peer.id + '-remoteVideo');
     if (remoteVideo) remoteVideo.srcObject = null;
-    peer.pc = new RTCPeerConnection(configuration);
+    const iceServers = await currentIceServers();
+    peer.pc = new RTCPeerConnection({ ...configuration, iceServers });
     peer.state = "new";
     peer.restartCount = 0;
     peer.pendingCandidates = [];
@@ -428,6 +474,7 @@ function resetPeer(peer) {
 }
 
 function closePeer(id) {
+    delete pendingPeers[id];
     const peer = peers[id];
     if (peer) {
         clearConnectWatchdog(peer);
@@ -524,6 +571,8 @@ async function attemptIceRestart(peer, reason) {
     renderConnectionBar();
     console.log("restarting ICE with", peer.id, "attempt", peer.restartCount, "reason:", reason);
     try {
+        const iceServers = await currentIceServers();
+        peer.pc.setConfiguration({ ...configuration, iceServers });
         await offerPeer(peer, { iceRestart: true });
     } catch (err) {
         console.error("ICE restart failed for", peer.id, err);
@@ -535,7 +584,7 @@ async function retryPeer(id) {
     const peer = peers[id];
     if (!peer) return;
     console.log("retrying peer", id);
-    resetPeer(peer);
+    await resetPeer(peer);
     startConnectWatchdog(peer);
     try {
         await addLocalTracks(peer);
@@ -704,9 +753,10 @@ async function startOffer(id) {
     }
     let peer = existing;
     if (!peer) {
-        peer = newPeer(id)
+        peer = await newPeer(id)
+        if (!peer) return
     } else if (peer.state === "failed" || peer.state === "reconnecting") {
-        resetPeer(peer)
+        await resetPeer(peer)
     }
     await addLocalTracks(peer)
     await offerPeer(peer)
@@ -727,11 +777,12 @@ async function startAnswer(id, msg) {
                 // means the old connection is gone, so replace it rather than
                 // deadlock on a stale record.
                 console.log("remote restarted negotiation, resetting peer", id)
-                resetPeer(peer)
+                await resetPeer(peer)
             }
         }
     } else {
-        peer = newPeer(id)
+        peer = await newPeer(id)
+        if (!peer) return
     }
     await addLocalTracks(peer)
     await answerPeer(peer, msg)

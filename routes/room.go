@@ -101,6 +101,7 @@ func roomHandler(w http.ResponseWriter, r *http.Request) {
 	// The client builds its RTCPeerConnection from this list, so a TURN relay can
 	// be added by configuration without rebuilding the frontend.
 	data["iceServers"] = iceServersForPage()
+	data["turnREST"] = turnRESTEnabled()
 	data["privacyModal"] = map[string]string{
 		"modalType": "privacy",
 		"hidden":    "",

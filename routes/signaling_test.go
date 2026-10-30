@@ -398,11 +398,12 @@ func TestJoinLeaveChurnDoesNotGrowMaps(t *testing.T) {
 	for {
 		connLock.Lock()
 		remaining := len(connections)
+		remainingRoomBuckets := len(roomConnections)
 		connLock.Unlock()
 		roomLock.Lock()
 		remainingRooms := len(rooms)
 		roomLock.Unlock()
-		if remaining == 0 && remainingRooms == 0 {
+		if remaining == 0 && remainingRooms == 0 && remainingRoomBuckets == 0 {
 			return
 		}
 		if time.Now().After(deadline) {
@@ -416,7 +417,37 @@ func TestJoinLeaveChurnDoesNotGrowMaps(t *testing.T) {
 			for _, c := range codes {
 				membership[c] = roomUsers(c)
 			}
-			t.Fatalf("leaked state: %d connections, %d rooms still registered: %v", remaining, remainingRooms, membership)
+			t.Fatalf("leaked state: %d connections, %d room buckets, %d rooms still registered: %v", remaining, remainingRoomBuckets, remainingRooms, membership)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestConnectionRegistryIndexesByRoom(t *testing.T) {
+	server := newTestServer(t)
+	codeA, codeB := newCode(t), newCode(t)
+
+	alice := connectSSE(t, server, codeA, "alice")
+	bob := connectSSE(t, server, codeB, "bob")
+	defer alice.disconnect()
+	defer bob.disconnect()
+
+	connCount, roomBuckets := connectionRegistryStats()
+	if connCount != 2 || roomBuckets != 2 {
+		t.Fatalf("registry = %d connections in %d rooms, want 2 and 2", connCount, roomBuckets)
+	}
+
+	alice.disconnect()
+	bob.disconnect()
+
+	deadline := time.Now().Add(eventTimeout)
+	for {
+		connCount, roomBuckets = connectionRegistryStats()
+		if connCount == 0 && roomBuckets == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("registry leaked after disconnect: %d connections, %d room buckets", connCount, roomBuckets)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

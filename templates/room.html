@@ -40,7 +40,7 @@
 
   <!-- Server-rendered ICE servers (see routes/ice.go). Kept out of the script
        body so signaling.js stays valid JavaScript. -->
-  <script type="application/json" id="ice-config">{{ .iceServers }}</script>
+  <script type="application/json" id="ice-config" data-turn-rest="{{ .turnREST }}">{{ .iceServers }}</script>
 
   <script>
     {{ template "js/signaling.js". }}

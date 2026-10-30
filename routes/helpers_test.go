@@ -58,8 +58,8 @@ func newTestServer(t *testing.T) *httptest.Server {
 	// schedule their own reconnects, so shrink it. Timers already scheduled by an
 	// earlier test keep their original delay and still clean up after themselves.
 	setRemovalGrace(t, 50*time.Millisecond)
-	iceServersJSON = ""
-	t.Cleanup(func() { iceServersJSON = "" })
+	activeICE = iceConfig{}
+	t.Cleanup(func() { activeICE = iceConfig{} })
 	server := httptest.NewServer(NewRouter())
 	t.Cleanup(server.Close)
 	return server
