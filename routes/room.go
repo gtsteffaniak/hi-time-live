@@ -99,6 +99,7 @@ func roomHandler(w http.ResponseWriter, r *http.Request) {
 	data["basePath"] = BasePath
 	data["code"] = id
 	data["iceServers"] = iceServersForPage()
+	data["turnREST"] = turnRESTEnabled()
 	data["privacyModal"] = map[string]string{
 		"modalType": "privacy",
 		"hidden":    "",

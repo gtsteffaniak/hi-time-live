@@ -39,12 +39,16 @@ func roomPage(t *testing.T, server *httptest.Server, url string) string {
 
 func renderedIceServers(t *testing.T, body string) string {
 	t.Helper()
-	const marker = `<script type="application/json" id="ice-config">`
-	start := strings.Index(body, marker)
-	if start < 0 {
+	const marker = `id="ice-config"`
+	abs := strings.Index(body, marker)
+	if abs < 0 {
 		t.Fatalf("room page did not render an ICE server list")
 	}
-	start += len(marker)
+	afterTag := strings.Index(body[abs:], ">")
+	if afterTag < 0 {
+		t.Fatalf("ICE server list element is malformed")
+	}
+	start := abs + afterTag + 1
 	end := strings.Index(body[start:], "</script>")
 	if end < 0 {
 		t.Fatalf("ICE server list element is not closed")
@@ -154,5 +158,53 @@ func TestTurnRESTRequiresTurnURL(t *testing.T) {
 	resetICEConfig(t)
 	if err := ConfigureICE(true, "", "", "", "", "secret", time.Hour, ""); err == nil {
 		t.Fatal("expected error when TURN_REST_SECRET is set without TURN_URL")
+	}
+	if err := ConfigureICE(false, "", "", "", "", "secret", time.Hour, ""); err == nil {
+		t.Fatal("expected error when TURN_REST_SECRET is set without TURN_URL outside dev mode")
+	}
+}
+
+func TestInvalidTurnURLIsRejected(t *testing.T) {
+	resetICEConfig(t)
+	if err := ConfigureICE(true, "", "http://turn.example.com:3478", "u", "p", "", 0, ""); err == nil {
+		t.Fatal("expected invalid TURN_URL to be rejected")
+	}
+}
+
+func TestDevTurnURLRequiresStaticCredentials(t *testing.T) {
+	resetICEConfig(t)
+	if err := ConfigureICE(true, "", "turn:turn.example.com:3478", "alice", "", "", 0, ""); err == nil {
+		t.Fatal("expected error when only TURN_USERNAME is set")
+	}
+}
+
+func TestICEServersRejectsNonICESchemes(t *testing.T) {
+	resetICEConfig(t)
+	if err := ConfigureICE(true, `[{"urls":"https://example.com"}]`, "", "", "", "", 0, ""); err == nil {
+		t.Fatal("expected non-ICE URL scheme to be rejected")
+	}
+}
+
+func TestIceConfigEndpointRefreshesRESTCredentials(t *testing.T) {
+	resetICEConfig(t)
+	server := newTestServer(t)
+	if err := ConfigureICE(false, "", "turn:turn.example.com:3478", "", "", "shared-secret", time.Hour, "hitime"); err != nil {
+		t.Fatalf("ConfigureICE: %v", err)
+	}
+	code := newCode(t)
+	resp, err := server.Client().Get(server.URL + "/ice-config?code=" + code)
+	if err != nil {
+		t.Fatalf("GET ice-config: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	if !strings.Contains(string(body), "turn:turn.example.com:3478") {
+		t.Fatalf("ice-config missing TURN URL: %s", body)
 	}
 }

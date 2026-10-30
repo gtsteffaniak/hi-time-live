@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"html/template"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -55,6 +57,30 @@ func iceServerURLs(raw json.RawMessage) []string {
 		}
 	}
 	return urls
+}
+
+func validICEURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	switch u.Scheme {
+	case "stun", "stuns", "turn", "turns":
+		return true
+	default:
+		return false
+	}
+}
+
+func validateICEServerURLs(servers []ICEServer) error {
+	for i, server := range servers {
+		for j, iceURL := range iceServerURLs(server.URLs) {
+			if !validICEURL(iceURL) {
+				return fmt.Errorf("ICE_SERVERS[%d].urls[%d] %q must use the stun, stuns, turn, or turns scheme", i, j, iceURL)
+			}
+		}
+	}
+	return nil
 }
 
 // defaultSTUNServers is used when nothing is configured.
@@ -120,6 +146,9 @@ func ConfigureICE(devMode bool, iceServersRaw, turnURL, turnUsername, turnCreden
 
 	for _, u := range strings.Split(turnURL, ",") {
 		if u = strings.TrimSpace(u); u != "" {
+			if !validICEURL(u) {
+				return fmt.Errorf("TURN_URL entry %q must use the stun, stuns, turn, or turns scheme", u)
+			}
 			activeICE.turnURLs = append(activeICE.turnURLs, u)
 		}
 	}
@@ -143,6 +172,9 @@ func ConfigureICE(devMode bool, iceServersRaw, turnURL, turnUsername, turnCreden
 			// REST credentials are minted per page; the shared secret stays on the server.
 			return validateRESTConfig()
 		}
+		if activeICE.turnRESTSecret != "" {
+			return validateRESTConfig()
+		}
 		if ignored != "" && !restTurn {
 			slog.Warn("ignoring ICE/TURN configuration outside dev mode; serving the built-in STUN servers",
 				"settings", ignored)
@@ -161,7 +193,15 @@ func ConfigureICE(devMode bool, iceServersRaw, turnURL, turnUsername, turnCreden
 				return fmt.Errorf("ICE_SERVERS[%d] must have a non-empty urls string or array", i)
 			}
 		}
+		if err := validateICEServerURLs(parsed); err != nil {
+			return err
+		}
 		return nil
+	}
+
+	if len(activeICE.turnURLs) > 0 && activeICE.turnRESTSecret == "" &&
+		(strings.TrimSpace(turnUsername) == "" || strings.TrimSpace(turnCredential) == "") {
+		return fmt.Errorf("TURN_URL requires both TURN_USERNAME and TURN_CREDENTIAL in dev mode when TURN_REST_SECRET is not set")
 	}
 
 	if restTurn {
@@ -228,4 +268,31 @@ func iceServersForPage() template.JS {
 		return template.JS("[]")
 	}
 	return template.JS(raw)
+}
+
+// turnRESTEnabled reports whether room pages should refresh ICE credentials.
+func turnRESTEnabled() bool {
+	return activeICE.turnRESTSecret != "" && len(activeICE.turnURLs) > 0
+}
+
+// iceConfigHandler returns a fresh ICE server list for long-lived room tabs.
+func iceConfigHandler(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	if !validCode(code) {
+		http.Error(w, "Invalid room code", http.StatusBadRequest)
+		return
+	}
+	servers, err := buildICEServers()
+	if err != nil {
+		http.Error(w, "Could not build ICE configuration", http.StatusInternalServerError)
+		return
+	}
+	raw, err := json.Marshal(servers)
+	if err != nil {
+		http.Error(w, "Could not encode ICE configuration", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(raw)
 }

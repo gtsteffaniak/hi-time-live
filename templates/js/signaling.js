@@ -17,13 +17,13 @@ const allowedCodecs = ['VP9', 'H264', 'VP8'];
 // firewalls, so those deployments need a TURN relay configured on the server.
 function readRenderedIceServers() {
     const element = document.getElementById('ice-config');
-    if (!element) return [];
+    if (!element) return null;
     try {
         const parsed = JSON.parse(element.textContent);
-        return Array.isArray(parsed) ? parsed : [];
+        return Array.isArray(parsed) ? parsed : null;
     } catch (err) {
         console.error("unparseable ICE configuration:", err);
-        return [];
+        return null;
     }
 }
 
@@ -36,8 +36,26 @@ const defaultIceServers = [
 ];
 const renderedIceServers = readRenderedIceServers();
 const configuration = {
-    'iceServers': renderedIceServers.length ? renderedIceServers : defaultIceServers,
+    'iceServers': renderedIceServers ?? defaultIceServers,
 };
+
+async function currentIceServers() {
+    const element = document.getElementById('ice-config');
+    if (element && element.dataset.turnRest === 'true') {
+        try {
+            const resp = await fetch(`ice-config?code={{ .code }}`, { cache: 'no-store' });
+            if (resp.ok) {
+                const parsed = await resp.json();
+                if (Array.isArray(parsed)) {
+                    return parsed;
+                }
+            }
+        } catch (err) {
+            console.error("could not refresh ICE configuration:", err);
+        }
+    }
+    return configuration.iceServers;
+}
 let localUserId = "notset"
 
 // Each remote participant gets one peer record: the RTCPeerConnection plus
@@ -252,14 +270,15 @@ async function addLocalTracks(peer) {
 // newPeer registers a peer record and creates its remote tile. Candidates
 // trickle out one event at a time as they are found rather than waiting for
 // gathering to complete and bundling them into the SDP.
-function newPeer(id) {
+async function newPeer(id) {
     if (peers[id]) {
         return peers[id]
     }
     console.log("adding new peer:", id)
+    const iceServers = await currentIceServers();
     const peer = {
         id: id,
-        pc: new RTCPeerConnection(configuration),
+        pc: new RTCPeerConnection({ iceServers: iceServers }),
         state: "new",
         pendingCandidates: earlyCandidates[id] || [],
         mediaState: earlyMediaState[id],
@@ -377,7 +396,7 @@ async function startOffer(id) {
         console.log("skipping offer, peer already negotiating:", id, existing.state)
         return
     }
-    const peer = newPeer(id)
+    const peer = await newPeer(id)
     await addLocalTracks(peer)
     await offerPeer(peer)
 }
@@ -389,7 +408,7 @@ async function startAnswer(id, msg) {
         console.log("dropping offer, peer already", existing.state, ":", id)
         return
     }
-    const peer = newPeer(id)
+    const peer = await newPeer(id)
     await addLocalTracks(peer)
     await answerPeer(peer, msg)
 }

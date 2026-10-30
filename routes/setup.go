@@ -25,7 +25,8 @@ func NormalizeBasePath(p string) string {
 // NewRouter builds the application's routes. Tests serve it directly.
 func NewRouter() *http.ServeMux {
 	router := http.NewServeMux()
-	router.HandleFunc("GET /events", sseHandler)       // Server-Sent Events endpoint
+	router.HandleFunc("GET /events", sseHandler) // Server-Sent Events endpoint
+	router.HandleFunc("GET /ice-config", iceConfigHandler)
 	router.HandleFunc("POST /event", postEventHandler) // Rest endpoint for client event responses
 	router.HandleFunc("GET /room", roomHandler)
 	router.HandleFunc("GET /", staticHandler)

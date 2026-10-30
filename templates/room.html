@@ -37,7 +37,7 @@
     </div>
   </div>
 
-  <script type="application/json" id="ice-config">{{ .iceServers }}</script>
+  <script type="application/json" id="ice-config" data-turn-rest="{{ .turnREST }}">{{ .iceServers }}</script>
   <script>
     {{ template "js/signaling.js". }}
     {{ template "js/customScripts.js". }}
